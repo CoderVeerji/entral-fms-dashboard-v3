@@ -3,12 +3,10 @@ import { fmsMaster, syncLog } from '@fms/db';
 import { createSyncDb } from './db';
 import { readStatusCacheSheet } from './sheets';
 import { transformStatusCacheRow, findArchivedRecordIds } from './transform';
-import { upsertRecords, upsertStageEvents, markArchived, refreshFmsEvalCache, existingRecordIds } from './upsert';
+import { upsertRecords, replaceStageEventsForFms, markArchived, refreshFmsEvalCache, existingRecordIds } from './upsert';
 
 // Entrypoint for the GitHub Actions scheduled workflow (see /.github/workflows/sync.yml) — see
-// plan §"Sync job" for the full per-FMS run sequence. M0 has zero rows in fms_master (nothing
-// connected yet), so this run intentionally does nothing but prove DB connectivity — the first
-// real FMS gets onboarded in M1.
+// plan §"Sync job" for the full per-FMS run sequence.
 async function main() {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) throw new Error('DATABASE_URL is not set.');
@@ -40,9 +38,8 @@ async function main() {
         await markArchived(db, fms.fmsId, archivedIds);
 
         await upsertRecords(db, normalized.map((n) => n.record));
-        for (const { record, stageEvents } of normalized) {
-          await upsertStageEvents(db, fms.fmsId, record.recordId, stageEvents);
-        }
+        const allStageEvents = normalized.flatMap((n) => n.stageEvents);
+        await replaceStageEventsForFms(db, fms.fmsId, allStageEvents);
         await refreshFmsEvalCache(db, fms.fmsId);
 
         await db.insert(syncLog).values({

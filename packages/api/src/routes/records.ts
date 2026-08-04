@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, asc, desc, eq, gte, lte, sql, count } from 'drizzle-orm';
+import { and, asc, desc, eq, getTableColumns, gte, lte, sql } from 'drizzle-orm';
 import { records, stageEvents } from '@fms/db';
 import { ok, AppError } from '@fms/core';
 import { requireAuth } from '../middleware/auth';
@@ -42,16 +42,23 @@ recordsRoutes.get('/', requireAuth('records.view'), async (c) => {
 
   const where = and(...conditions);
 
-  const [{ value: total }] = await db.select({ value: count() }).from(records).where(where);
-
   const start = Math.max(0, Number(q.start) || 0);
   let length = Number(q.length);
   if (!length || length < 0) length = 50;
   length = Math.min(length, HARD_CAP);
 
-  const rows = await db.select().from(records).where(where)
+  // One round trip instead of two: `count(*) over()` rides along with the page of rows instead
+  // of a separate COUNT query — halves the Neon HTTP-driver latency this endpoint pays per call
+  // (see plan §"Backend API" on why Workers uses the HTTP driver, not a pooled connection).
+  const rowsWithTotal = await db.select({
+    ...getTableColumns(records),
+    totalCount: sql<number>`count(*) over()`,
+  }).from(records).where(where)
     .orderBy(desc(records.planTime))
     .limit(length).offset(start);
+
+  const total = rowsWithTotal.length > 0 ? Number(rowsWithTotal[0].totalCount) : 0;
+  const rows = rowsWithTotal.map(({ totalCount: _totalCount, ...rest }) => rest);
 
   return c.json(ok({ records: rows, total, start, length }));
 });

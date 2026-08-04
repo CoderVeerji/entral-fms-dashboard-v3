@@ -30,12 +30,18 @@ export async function upsertRecords(db: Db, rows: NormalizedRecord[]): Promise<v
   }
 }
 
-// Only records whose Status_Cache `updated_at` moved since last sync get their stage_events
-// re-parsed/re-written — the sync job's own "skip unnecessary work" optimization (see plan; not a
-// duplicate of the publisher's own is_closed cursor, just a cheap per-record diff on this side).
-export async function upsertStageEvents(db: Db, fmsId: string, recordId: string, events: NormalizedStageEvent[]): Promise<void> {
-  await db.delete(stageEvents).where(and(eq(stageEvents.fmsId, fmsId), eq(stageEvents.recordId, recordId)));
-  if (events.length) await db.insert(stageEvents).values(events);
+// Replaces every stage_events row for this FMS in exactly 2 round trips (one delete, one batched
+// insert) instead of one delete+insert PER RECORD — the original per-record version here caused
+// a real observed hang syncing 3,500+ records (thousands of sequential Neon round trips, each
+// paying real network latency, easily adding up to minutes). Since readStatusCacheSheet already
+// reads the FMS's entire Status_Cache every run (see index.ts's comment on why no separate
+// updated_at diff is needed there), a full replace is correct and simple, not just faster.
+export async function replaceStageEventsForFms(db: Db, fmsId: string, allEvents: NormalizedStageEvent[]): Promise<void> {
+  await db.delete(stageEvents).where(eq(stageEvents.fmsId, fmsId));
+  for (let i = 0; i < allEvents.length; i += BATCH_SIZE) {
+    const batch = allEvents.slice(i, i + BATCH_SIZE);
+    if (batch.length) await db.insert(stageEvents).values(batch);
+  }
 }
 
 export async function markArchived(db: Db, fmsId: string, recordIds: string[]): Promise<void> {
