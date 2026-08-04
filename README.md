@@ -87,16 +87,23 @@ npm install
 npm test              # unit tests everywhere; DB-integration tests auto-skip without DATABASE_URL
 ```
 
-To also run the DB-integration tests locally (`packages/api/src/routes/auth.test.ts`), point
-`DATABASE_URL` at any real Postgres — a local one via `docker compose up -d db` (see
-`docker-compose.yml`) if Docker is available, or a disposable Neon branch:
+To also run `packages/api`'s DB-integration tests locally, point `DATABASE_URL` at your **real
+Neon database** (or a disposable Neon branch of it):
 
 ```
-DATABASE_URL="postgres://fms:fms@localhost:5432/fms_test" npm test
+DATABASE_URL="<your Neon connection string>" npm test
 ```
 
-CI (`.github/workflows/ci.yml`) always runs the full suite, including DB-integration tests,
-against a `postgres:16` service container — no local Docker needed to get real CI coverage.
+**Important:** `packages/api`'s DB client (`@neondatabase/serverless`'s `neon-http` driver, see
+`packages/api/src/db.ts`) can only reach a real Neon endpoint over HTTPS — Cloudflare Workers
+can't open raw TCP sockets, which is why that driver is used at all. A generic local Postgres
+(`docker-compose.yml`, still useful for testing `packages/sync` in isolation, which uses a normal
+TCP `pg` connection since it runs on a plain GitHub Actions VM, not Workers) will NOT work for
+`packages/api`'s tests — every query fails with `NeonDbError: fetch failed / ECONNREFUSED`. This
+is also why CI (`.github/workflows/ci.yml`) runs tests against the real Neon database via the
+same `DATABASE_URL` secret the sync job uses, not a service container — the DB-integration tests
+already scope every row they touch with a timestamp-suffixed username/ID and clean up in
+`afterAll`, so sharing the database with production data is safe at this project's scale.
 
 ## Current status
 

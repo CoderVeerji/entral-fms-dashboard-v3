@@ -8,24 +8,17 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    services:
-      # Free, unlimited, no external network calls — see plan §"Test strategy" for why this beats
-      # a Neon branch-per-run for routine CI (Neon branching is reserved for manual staging use).
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: fms
-          POSTGRES_PASSWORD: fms
-          POSTGRES_DB: fms_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U fms"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+    # No local postgres:16 service container — the API's DB client (@neondatabase/serverless's
+    # neon-http driver, required because Cloudflare Workers cannot open raw TCP sockets, see
+    # packages/api/src/db.ts) can ONLY talk to a real Neon endpoint over HTTPS, not a generic
+    # Postgres server. A local container reached "connection refused"/"fetch failed" every time
+    # (real failure observed in CI: NeonDbError wrapping ECONNREFUSED). Testing against the same
+    # real Neon database the app actually deploys against is what makes this exercise the real
+    # code path — the DB-integration tests already scope every row they touch with a
+    # timestamp-suffixed username/roleId and clean up in afterAll, so sharing the database with
+    # production data is safe at this project's scale.
     env:
-      DATABASE_URL: postgres://fms:fms@localhost:5432/fms_test
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -38,9 +31,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Apply schema to test database
-        run: psql "$DATABASE_URL" -f packages/db/migrations/0000_init.sql
-
       - name: Typecheck (all packages)
         run: |
           npm exec -w packages/core -- tsc --noEmit
@@ -49,7 +39,7 @@ jobs:
           npm exec -w packages/sync -- tsc --noEmit
           npm exec -w packages/web -- tsc -b --noEmit
 
-      - name: Run tests (unit + DB-integration, DATABASE_URL is set)
+      - name: Run tests (unit + DB-integration, against the real Neon database)
         run: npm test
 
       - name: Build web frontend
