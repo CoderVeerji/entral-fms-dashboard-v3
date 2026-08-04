@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      # Free, unlimited, no external network calls — see plan §"Test strategy" for why this beats
+      # a Neon branch-per-run for routine CI (Neon branching is reserved for manual staging use).
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: fms
+          POSTGRES_PASSWORD: fms
+          POSTGRES_DB: fms_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fms"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://fms:fms@localhost:5432/fms_test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: v3/package-lock.json
+
+      - name: Install dependencies
+        working-directory: v3
+        run: npm ci
+
+      - name: Apply schema to test database
+        working-directory: v3
+        run: psql "$DATABASE_URL" -f packages/db/migrations/0000_init.sql
+
+      - name: Typecheck (all packages)
+        working-directory: v3
+        run: |
+          npm exec -w packages/core -- tsc --noEmit
+          npm exec -w packages/db -- tsc --noEmit
+          npm exec -w packages/api -- tsc --noEmit
+          npm exec -w packages/sync -- tsc --noEmit
+          npm exec -w packages/web -- tsc -b --noEmit
+
+      - name: Run tests (unit + DB-integration, DATABASE_URL is set)
+        working-directory: v3
+        run: npm test
+
+      - name: Build web frontend
+        working-directory: v3/packages/web
+        run: npx vite build

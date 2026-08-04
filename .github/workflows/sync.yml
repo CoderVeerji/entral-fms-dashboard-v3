@@ -1,0 +1,34 @@
+name: Sync FMS data
+
+# Runs every 5 minutes, matching the old app's warmFmsCache cadence — see plan §"Known risks":
+# this workflow's repo needs to be PUBLIC for unlimited free Actions minutes at this cadence
+# (288 runs/day comfortably exceeds the ~2,000 min/mo private-repo free allowance once per-run VM
+# overhead is counted). No proprietary data lives in this repo — only generic, FMS-agnostic sync
+# code; FMS spreadsheet IDs/credentials are secrets, never committed.
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {} # manual "Sync Now" equivalent to the old app's button
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: v3/package-lock.json
+
+      - name: Install dependencies
+        working-directory: v3
+        run: npm ci
+
+      - name: Run sync
+        working-directory: v3/packages/sync
+        run: npm start

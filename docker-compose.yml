@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fms
+      POSTGRES_PASSWORD: fms
+      POSTGRES_DB: fms_test
+    ports:
+      - '5432:5432'
+    volumes:
+      - fms_db_data:/var/lib/postgresql/data
+
+volumes:
+  fms_db_data:

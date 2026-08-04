@@ -1,0 +1,57 @@
+:root {
+  --brand-dark: #071A2B;
+  --brand-blue: #1677FF;
+  --brand-teal: #17C3B2;
+  --bg: #F4F7FB;
+  --card-bg: #FFFFFF;
+  --text: #0F2337;
+  --text-muted: #5A6B84;
+  --border: #E4E9F2;
+  --danger: #D33;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app-loading {
+  display: flex; align-items: center; justify-content: center; height: 100vh; color: var(--text-muted);
+}
+
+.login-screen {
+  display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px;
+}
+.login-card {
+  background: var(--card-bg); border-radius: 16px; padding: 36px 32px; max-width: 380px; width: 100%;
+  box-shadow: 0 6px 24px rgba(7, 26, 43, 0.10); display: flex; flex-direction: column; gap: 14px;
+}
+.login-card h1 { font-size: 19px; margin: 0; color: var(--brand-dark); }
+.login-subtitle { margin: 0 0 8px; color: var(--text-muted); font-size: 13px; }
+.login-card label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-muted); }
+.login-card input[type="text"], .login-card input[type="password"] {
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px;
+}
+.login-remember { flex-direction: row !important; align-items: center; gap: 8px !important; }
+.login-error {
+  background: #FDECEC; color: var(--danger); border-radius: 8px; padding: 10px 12px; font-size: 13px;
+}
+.login-card button {
+  margin-top: 6px; padding: 11px; border: none; border-radius: 30px; font-weight: bold; font-size: 14px;
+  color: #fff; background: linear-gradient(135deg, var(--brand-blue), var(--brand-teal)); cursor: pointer;
+}
+.login-card button:disabled { opacity: 0.6; cursor: default; }
+
+.app-shell-header {
+  display: flex; align-items: center; justify-content: space-between; padding: 14px 24px;
+  background: var(--brand-dark); color: #fff;
+}
+.app-shell-user { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+.app-shell-user button {
+  padding: 6px 14px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.3); background: transparent;
+  color: #fff; cursor: pointer;
+}
+.app-shell-main { padding: 32px; color: var(--text-muted); }

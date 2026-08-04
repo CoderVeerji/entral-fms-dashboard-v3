@@ -1,0 +1,12 @@
+name = "fms-dashboard-api"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+# DATABASE_URL is a SECRET, never committed — set it with:
+#   npx wrangler secret put DATABASE_URL
+# (value comes from your free Neon project's connection string — see /README.md "Manual setup
+# steps"). Local dev reads it from a gitignored .dev.vars file instead (see .dev.vars.example).
+
+[observability]
+enabled = true
