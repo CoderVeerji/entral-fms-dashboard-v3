@@ -23,12 +23,11 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: v3/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        working-directory: v3
         run: npm ci
 
       - name: Run sync
-        working-directory: v3/packages/sync
+        working-directory: packages/sync
         run: npm start

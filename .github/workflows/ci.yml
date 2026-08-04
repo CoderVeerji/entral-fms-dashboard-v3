@@ -33,18 +33,15 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: v3/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        working-directory: v3
         run: npm ci
 
       - name: Apply schema to test database
-        working-directory: v3
         run: psql "$DATABASE_URL" -f packages/db/migrations/0000_init.sql
 
       - name: Typecheck (all packages)
-        working-directory: v3
         run: |
           npm exec -w packages/core -- tsc --noEmit
           npm exec -w packages/db -- tsc --noEmit
@@ -53,9 +50,8 @@ jobs:
           npm exec -w packages/web -- tsc -b --noEmit
 
       - name: Run tests (unit + DB-integration, DATABASE_URL is set)
-        working-directory: v3
         run: npm test
 
       - name: Build web frontend
-        working-directory: v3/packages/web
+        working-directory: packages/web
         run: npx vite build
