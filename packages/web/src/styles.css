@@ -57,6 +57,39 @@ body {
 }
 .app-shell-main { padding: 32px; color: var(--text-muted); }
 
+.live-records-page h2 { margin: 0 0 16px; color: var(--brand-dark); font-size: 18px; }
+
+.filter-bar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+.filter-bar input, .filter-bar select {
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px;
+  background: var(--card-bg); color: var(--text);
+}
+.filter-bar input { flex: 1 1 220px; min-width: 160px; }
+
+/* Wide data table: always its own horizontal-scroll container, never shrunk illegibly on
+   narrow screens — see the shared mobile convention note below. */
+.table-scroll { overflow-x: auto; background: var(--card-bg); border-radius: 10px; border: 1px solid var(--border); }
+.records-table { width: 100%; border-collapse: collapse; font-size: 13px; white-space: nowrap; }
+.records-table th, .records-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+.records-table th { color: var(--text-muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; }
+.records-table tbody tr:last-child td { border-bottom: none; }
+.empty-state { text-align: center; color: var(--text-muted); padding: 24px !important; }
+
+.badge {
+  display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600;
+  white-space: nowrap;
+}
+.badge-critical { background: #FDECEC; color: #C0392B; }
+.badge-warning { background: #FFF4E0; color: #B7791F; }
+.badge-done { background: #E6F7F1; color: #1D9A6C; }
+.badge-neutral { background: #EEF2F7; color: var(--text-muted); }
+
+.pagination { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 14px; font-size: 13px; color: var(--text-muted); }
+.pagination button {
+  padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border); background: var(--card-bg); cursor: pointer;
+}
+.pagination button:disabled { opacity: 0.5; cursor: default; }
+
 /* Mobile breakpoint convention (REBUILD_PLAN principle: one convention, written once, reused
    everywhere) — 640px is the shared cutoff every future page/component in this app uses for
    "narrow screen" layout. Widening a table/dashboard grid on desktop and stacking/scrolling on
@@ -69,4 +102,7 @@ body {
   .app-shell-header > span { font-size: 14px; }
   .app-shell-user { font-size: 12px; gap: 8px; flex-wrap: wrap; }
   .app-shell-main { padding: 20px 16px; }
+  .filter-bar { flex-direction: column; }
+  .filter-bar input, .filter-bar select { width: 100%; }
+  .pagination { flex-wrap: wrap; }
 }

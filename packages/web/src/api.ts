@@ -69,3 +69,59 @@ export function changePassword(token: string, currentPassword: string | undefine
 export function me(token: string) {
   return request<LoginUser>('/api/auth/me', {}, token);
 }
+
+export interface FmsConfig {
+  fmsId: string;
+  fmsName: string;
+  shortName: string | null;
+  spreadsheetId: string;
+  statusCacheSheetName: string | null;
+  active: boolean;
+}
+
+export function getFmsList(token: string) {
+  return request<FmsConfig[]>('/api/fms', {}, token);
+}
+
+export interface RecordDelay {
+  minutes: number;
+  hours: number;
+  days: number;
+  human: string | null;
+}
+
+export interface RecordRow {
+  fmsId: string;
+  recordId: string;
+  displayName: string | null;
+  currentStage: string | null;
+  doer: string | null;
+  doerEmail: string | null;
+  planTime: string | null;
+  recordStatus: string;
+  delay: RecordDelay | null;
+  completedSteps: number | null;
+  totalSteps: number | null;
+  lastUpdate: string | null;
+  freshness: string | null;
+}
+
+export interface RecordsQuery {
+  fmsId?: string;
+  status?: string;
+  freshness?: string;
+  doer?: string;
+  search?: string;
+  start?: number;
+  length?: number;
+}
+
+export function getRecords(token: string, query: RecordsQuery) {
+  const params = new URLSearchParams();
+  Object.entries(query).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== '') params.set(k, String(v));
+  });
+  return request<{ records: RecordRow[]; total: number; start: number; length: number }>(
+    `/api/records?${params.toString()}`, {}, token,
+  );
+}

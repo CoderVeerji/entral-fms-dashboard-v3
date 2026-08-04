@@ -4,6 +4,8 @@ import { createDb } from './db';
 import { AppError, fail } from '@fms/core';
 import { statusForCode } from './errors';
 import { authRoutes } from './routes/auth';
+import { fmsRoutes } from './routes/fms';
+import { recordsRoutes } from './routes/records';
 import type { Env } from './env';
 import type { Variables } from './types';
 
@@ -30,5 +32,7 @@ app.onError((err, c) => {
 app.get('/api/health', (c) => c.json({ ok: true }));
 
 app.route('/api/auth', authRoutes);
+app.route('/api/fms', fmsRoutes);
+app.route('/api/records', recordsRoutes);
 
 export default app;

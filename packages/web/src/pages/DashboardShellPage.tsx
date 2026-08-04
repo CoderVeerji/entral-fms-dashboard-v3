@@ -1,8 +1,8 @@
 import { useAuth } from '../context/AuthContext';
+import { LiveRecordsPage } from './LiveRecordsPage';
 
-// Placeholder authenticated shell for M0 — real pages (Dashboard, Live Records, etc.) get built
-// out starting M1/M2 per the plan's phased rollout. This exists so M0's Definition of Done ("log
-// into the new stack, see an empty authenticated shell") is concretely checkable end-to-end.
+// Real nav/sidebar (multi-page routing) is M2 scope per the plan — M1's goal is Live Records
+// itself being fast, not the surrounding shell, so this renders it directly for now.
 export function DashboardShellPage() {
   const { user, logout } = useAuth();
 
@@ -16,7 +16,7 @@ export function DashboardShellPage() {
         </div>
       </header>
       <main className="app-shell-main">
-        <p>Signed in successfully. Live Records, Dashboard, and the rest of the app land in the next phase (M1+).</p>
+        <LiveRecordsPage />
       </main>
     </div>
   );
