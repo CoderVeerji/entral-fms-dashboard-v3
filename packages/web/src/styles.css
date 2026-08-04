@@ -47,11 +47,26 @@ body {
 
 .app-shell-header {
   display: flex; align-items: center; justify-content: space-between; padding: 14px 24px;
-  background: var(--brand-dark); color: #fff;
+  background: var(--brand-dark); color: #fff; flex-wrap: wrap; gap: 8px;
 }
+.app-shell-header > span { font-weight: 600; }
 .app-shell-user { display: flex; align-items: center; gap: 12px; font-size: 13px; }
 .app-shell-user button {
   padding: 6px 14px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.3); background: transparent;
   color: #fff; cursor: pointer;
 }
 .app-shell-main { padding: 32px; color: var(--text-muted); }
+
+/* Mobile breakpoint convention (REBUILD_PLAN principle: one convention, written once, reused
+   everywhere) — 640px is the shared cutoff every future page/component in this app uses for
+   "narrow screen" layout. Widening a table/dashboard grid on desktop and stacking/scrolling on
+   mobile is decided per-component below this line as new pages are built (M1+), not per-page ad
+   hoc — a wide data table (Live Records, MIS) always gets its own horizontal-scroll container
+   rather than shrinking illegibly; a KPI/card grid always collapses to a single column. */
+@media (max-width: 640px) {
+  .login-card { padding: 28px 20px; }
+  .app-shell-header { padding: 12px 16px; }
+  .app-shell-header > span { font-size: 14px; }
+  .app-shell-user { font-size: 12px; gap: 8px; flex-wrap: wrap; }
+  .app-shell-main { padding: 20px 16px; }
+}
