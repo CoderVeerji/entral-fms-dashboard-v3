@@ -1,6 +1,6 @@
 import { eq, and } from 'drizzle-orm';
 import { fmsMaster, syncLog, dataHealthCache } from '@fms/db';
-import { createSyncDb } from './db';
+import { createSyncDb, warmUpConnection } from './db';
 import { readStatusCacheSheet } from './sheets';
 import { transformStatusCacheRow, findArchivedRecordIds } from './transform';
 import { upsertRecords, replaceStageEventsForFms, markArchived, refreshFmsEvalCache, existingRecordIds } from './upsert';
@@ -14,6 +14,8 @@ async function main() {
   const { db, pool } = createSyncDb(databaseUrl);
 
   try {
+    await warmUpConnection(db);
+
     const activeFms = await db.select().from(fmsMaster)
       .where(and(eq(fmsMaster.active, true), eq(fmsMaster.isDeleted, false)));
 

@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import * as api from '../api';
 import { PAGE_TITLES } from '../nav';
 import { applyTheme, getStoredTheme } from '../theme';
+import { ChangePasswordScreen } from '../pages/ChangePasswordScreen';
 
 interface TopbarProps {
   route: string;
@@ -13,6 +14,7 @@ export function Topbar({ route, onToggleSidebar }: TopbarProps) {
   const { user, token, logout } = useAuth();
   const [isDark, setIsDark] = useState(getStoredTheme() === 'dark');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const title = PAGE_TITLES[route] || ['Central FMS Dashboard', ''];
@@ -29,7 +31,7 @@ export function Topbar({ route, onToggleSidebar }: TopbarProps) {
     setSyncMessage(null);
     const res = await api.triggerSync(token);
     setSyncing(false);
-    setSyncMessage(res.ok ? res.message : res.message);
+    setSyncMessage(res.message);
     setTimeout(() => setSyncMessage(null), 6000);
   }
 
@@ -42,7 +44,7 @@ export function Topbar({ route, onToggleSidebar }: TopbarProps) {
           <div className="page-sub">{title[1]}</div>
         </div>
       </div>
-      <div className="topbar-right">
+      <div className="topbar-right" style={{ position: 'relative' }}>
         {syncMessage && <span className="sync-toast">{syncMessage}</span>}
         <button className="icon-btn" onClick={syncNow} disabled={syncing} title="Sync Now — pull fresh data from every connected FMS">
           <i className={'fas fa-arrows-rotate' + (syncing ? ' fa-spin' : '')} />
@@ -56,9 +58,21 @@ export function Topbar({ route, onToggleSidebar }: TopbarProps) {
             <div className="name">{user?.fullName || user?.username}</div>
             <div className="role">{user?.roleName}</div>
           </div>
-          {menuOpen && <button onClick={(e) => { e.stopPropagation(); logout(); }}>Sign out</button>}
         </div>
+        {menuOpen && (
+          <div className="dropdown-menu" onMouseLeave={() => setMenuOpen(false)}>
+            <div className="dm-item" onClick={() => { setShowChangePassword(true); setMenuOpen(false); }}>
+              <i className="fas fa-key" /> Change Password
+            </div>
+            <div className="dm-item" onClick={() => logout()}>
+              <i className="fas fa-right-from-bracket" /> Sign out
+            </div>
+          </div>
+        )}
       </div>
+      {showChangePassword && (
+        <ChangePasswordScreen forced={false} onDone={() => setShowChangePassword(false)} onCancel={() => setShowChangePassword(false)} />
+      )}
     </div>
   );
 }

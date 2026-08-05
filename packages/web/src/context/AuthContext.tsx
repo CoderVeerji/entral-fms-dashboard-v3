@@ -13,6 +13,7 @@ interface AuthState {
   loading: boolean;
   login: (username: string, password: string, rememberMe: boolean) => Promise<{ ok: boolean; message: string }>;
   logout: () => Promise<void>;
+  markPasswordChanged: () => void;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -59,8 +60,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, [token]);
 
+  // Called right after a successful changePassword call — updates the in-memory user so the
+  // forced-change screen (see ChangePasswordScreen) knows to let the user through without
+  // needing a full re-login.
+  const markPasswordChanged = useCallback(() => {
+    setUser((u) => (u ? { ...u, mustChangePassword: false } : u));
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ token, user, loading, login: doLogin, logout: doLogout }}>
+    <AuthContext.Provider value={{ token, user, loading, login: doLogin, logout: doLogout, markPasswordChanged }}>
       {children}
     </AuthContext.Provider>
   );
