@@ -125,3 +125,32 @@ export function getRecords(token: string, query: RecordsQuery) {
     `/api/records?${params.toString()}`, {}, token,
   );
 }
+
+export interface DashboardKpi {
+  totalActiveFms: number;
+  totalActiveRecords: number;
+  runningOnTime: number;
+  atRisk: number;
+  overdue: number;
+  stalled: number;
+  completedOnTime: number;
+  completedLate: number;
+  dataExceptions: number;
+  staleRecords: number;
+}
+
+export interface FmsHealth {
+  fmsId: string;
+  fmsName: string;
+  error: string | null;
+  overallScore?: number | null;
+  activeRecords?: number;
+  overdueRecords?: number;
+  atRiskRecords?: number;
+  stalledRecords?: number;
+  healthBadge: 'green' | 'amber' | 'red' | 'grey';
+}
+
+export function getDashboard(token: string) {
+  return request<{ kpi: DashboardKpi; fmsHealth: FmsHealth[] }>('/api/dashboard', {}, token);
+}

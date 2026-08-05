@@ -11,11 +11,16 @@ const STATUS_OPTIONS = [
 ];
 const FRESHNESS_OPTIONS = ['Fresh', 'Warning', 'Stale', 'Critical', 'Never'];
 
-function statusClass(status: string): string {
-  if (status === 'OVERDUE' || status === 'STALLED' || status === 'DATA_EXCEPTION') return 'badge badge-critical';
-  if (status === 'AT_RISK') return 'badge badge-warning';
-  if (status === 'COMPLETED_ON_TIME' || status === 'COMPLETED_LATE') return 'badge badge-done';
-  return 'badge badge-neutral';
+// Same color mapping as app/index.html's STATUS_BADGE_MAP, trimmed to the colors styles.css
+// defines (green/red/amber/blue/grey).
+function statusColor(status: string): string {
+  if (status === 'OVERDUE' || status === 'STALLED') return 'red';
+  if (status === 'DATA_EXCEPTION') return 'red';
+  if (status === 'AT_RISK') return 'amber';
+  if (status === 'COMPLETED_LATE') return 'amber';
+  if (status === 'COMPLETED_ON_TIME' || status === 'COMPLETED_EARLY') return 'green';
+  if (status === 'RUNNING_ON_TIME') return 'blue';
+  return 'grey';
 }
 
 export function LiveRecordsPage() {
@@ -57,8 +62,6 @@ export function LiveRecordsPage() {
 
   return (
     <div className="live-records-page">
-      <h2>Live Records</h2>
-
       <div className="filter-bar">
         <input
           type="text" placeholder="Search name, ID, doer..." value={search}
@@ -97,7 +100,7 @@ export function LiveRecordsPage() {
                 <td>{fmsList.find((f) => f.fmsId === r.fmsId)?.fmsName || r.fmsId}</td>
                 <td>{r.currentStage || '—'}</td>
                 <td>{r.doer || '—'}</td>
-                <td><span className={statusClass(r.recordStatus)}>{r.recordStatus.replace(/_/g, ' ')}</span></td>
+                <td><span className={'badge badge-' + statusColor(r.recordStatus)}>{r.recordStatus.replace(/_/g, ' ')}</span></td>
                 <td>{r.freshness || '—'}</td>
                 <td>{r.planTime ? new Date(r.planTime).toLocaleString() : '—'}</td>
                 <td>{r.delay?.human || '—'}</td>
