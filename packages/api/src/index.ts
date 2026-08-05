@@ -7,6 +7,7 @@ import { authRoutes } from './routes/auth';
 import { fmsRoutes } from './routes/fms';
 import { recordsRoutes } from './routes/records';
 import { dashboardRoutes } from './routes/dashboard';
+import { syncRoutes } from './routes/sync';
 import type { Env } from './env';
 import type { Variables } from './types';
 
@@ -36,5 +37,6 @@ app.route('/api/auth', authRoutes);
 app.route('/api/fms', fmsRoutes);
 app.route('/api/records', recordsRoutes);
 app.route('/api/dashboard', dashboardRoutes);
+app.route('/api/sync', syncRoutes);
 
 export default app;

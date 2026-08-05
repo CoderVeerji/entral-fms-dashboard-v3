@@ -154,3 +154,7 @@ export interface FmsHealth {
 export function getDashboard(token: string) {
   return request<{ kpi: DashboardKpi; fmsHealth: FmsHealth[] }>('/api/dashboard', {}, token);
 }
+
+export function triggerSync(token: string) {
+  return request<boolean>('/api/sync/trigger', { method: 'POST' }, token);
+}
