@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { AppShell } from './components/AppShell';
 import { DashboardPage } from './pages/DashboardPage';
 import { LiveRecordsPage } from './pages/LiveRecordsPage';
+import { DataHealthPage } from './pages/DataHealthPage';
 import { applyTheme, getStoredTheme } from './theme';
 
 // Hash-based routing (matches app/index.html's own approach) — no react-router dependency needed
@@ -29,7 +30,7 @@ export function AuthenticatedApp() {
 
   return (
     <AppShell route={route} onNavigate={navigate}>
-      {route === 'liveRecords' ? <LiveRecordsPage /> : <DashboardPage />}
+      {route === 'liveRecords' ? <LiveRecordsPage /> : route === 'dataHealth' ? <DataHealthPage /> : <DashboardPage />}
     </AppShell>
   );
 }

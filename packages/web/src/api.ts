@@ -158,3 +158,14 @@ export function getDashboard(token: string) {
 export function triggerSync(token: string) {
   return request<boolean>('/api/sync/trigger', { method: 'POST' }, token);
 }
+
+export interface DataHealthIssue {
+  fmsId: string;
+  fmsName: string;
+  type: string;
+  detail: string;
+}
+
+export function getDataHealth(token: string) {
+  return request<{ checkedAt: string | null; issues: DataHealthIssue[]; issueCount: number }>('/api/data-health', {}, token);
+}

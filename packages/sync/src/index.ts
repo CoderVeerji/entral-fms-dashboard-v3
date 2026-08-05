@@ -1,9 +1,10 @@
 import { eq, and } from 'drizzle-orm';
-import { fmsMaster, syncLog } from '@fms/db';
+import { fmsMaster, syncLog, dataHealthCache } from '@fms/db';
 import { createSyncDb } from './db';
 import { readStatusCacheSheet } from './sheets';
 import { transformStatusCacheRow, findArchivedRecordIds } from './transform';
 import { upsertRecords, replaceStageEventsForFms, markArchived, refreshFmsEvalCache, existingRecordIds } from './upsert';
+import { dedupeAndFindDuplicates, checkSuspiciousDates, checkNegativeDelay, type DataHealthIssue } from './dataHealth';
 
 // Entrypoint for the GitHub Actions scheduled workflow (see /.github/workflows/sync.yml) — see
 // plan §"Sync job" for the full per-FMS run sequence.
@@ -17,9 +18,12 @@ async function main() {
       .where(and(eq(fmsMaster.active, true), eq(fmsMaster.isDeleted, false)));
 
     if (!activeFms.length) {
-      console.log('No active FMS connected yet — nothing to sync (this is expected until M1).');
+      console.log('No active FMS connected yet — nothing to sync.');
       return;
     }
+
+    const syncedFms: { fmsId: string; fmsName: string }[] = [];
+    const allIssues: DataHealthIssue[] = [];
 
     for (const fms of activeFms) {
       const startedAt = new Date();
@@ -30,15 +34,27 @@ async function main() {
         }
 
         const rawRows = await readStatusCacheSheet(fms.spreadsheetId, fms.statusCacheSheetName);
-        const normalized = rawRows.map((r) => transformStatusCacheRow(fms.fmsId, r));
+        const rawNormalized = rawRows.map((r) => transformStatusCacheRow(fms.fmsId, r));
+
+        // Defensive dedupe (see dataHealth.ts's comment) — also what prevents a Postgres
+        // "ON CONFLICT DO UPDATE command cannot affect row a second time" crash if Status_Cache
+        // ever genuinely has a repeated record_id in one read.
+        const { deduped, duplicateIds } = dedupeAndFindDuplicates(rawNormalized);
+        if (duplicateIds.length) {
+          allIssues.push({
+            fmsId: fms.fmsId, fmsName: fms.fmsName, type: 'DUPLICATE_RECORDS',
+            detail: `This FMS's own Status_Cache sheet has duplicate record_id rows: ${duplicateIds.slice(0, 8).join(', ')}`
+              + `${duplicateIds.length > 8 ? ` (+${duplicateIds.length - 8} more)` : ''} — fix at the source (FMS_Status_Publisher.gs).`,
+          });
+        }
 
         const previouslyKnown = await existingRecordIds(db, fms.fmsId);
-        const currentlyPresent = normalized.map((n) => n.record.recordId);
+        const currentlyPresent = deduped.map((n) => n.record.recordId);
         const archivedIds = findArchivedRecordIds(previouslyKnown, currentlyPresent);
         await markArchived(db, fms.fmsId, archivedIds);
 
-        await upsertRecords(db, normalized.map((n) => n.record));
-        const allStageEvents = normalized.flatMap((n) => n.stageEvents);
+        await upsertRecords(db, deduped.map((n) => n.record));
+        const allStageEvents = deduped.flatMap((n) => n.stageEvents);
         await replaceStageEventsForFms(db, fms.fmsId, allStageEvents);
         await refreshFmsEvalCache(db, fms.fmsId);
 
@@ -46,7 +62,8 @@ async function main() {
           fmsId: fms.fmsId, startedAt, completedAt: new Date(), status: 'SUCCESS',
           rowsRead: rawRows.length, durationMs: Date.now() - startedAt.getTime(), triggeredBy: 'sync-job',
         });
-        console.log(`Synced ${fms.fmsName}: ${rawRows.length} rows, ${archivedIds.length} newly archived.`);
+        console.log(`Synced ${fms.fmsName}: ${rawRows.length} rows, ${archivedIds.length} newly archived, ${duplicateIds.length} duplicates.`);
+        syncedFms.push({ fmsId: fms.fmsId, fmsName: fms.fmsName });
       } catch (err) {
         // One FMS failing must never abort the run for the others — same principle as
         // warmFmsCache's per-FMS try/catch in the old app/Code.gs.
@@ -58,6 +75,23 @@ async function main() {
         });
       }
     }
+
+    // Data health checks run AFTER every FMS's own sync, over whatever's now in Postgres — see
+    // app/Code.gs's runDataIntegrityChecks_, the same checks that used to require someone to
+    // click "Run Full System Test" to see. One issue here can't abort another FMS's check.
+    for (const fms of syncedFms) {
+      try {
+        allIssues.push(...await checkSuspiciousDates(db, fms.fmsId, fms.fmsName));
+        allIssues.push(...await checkNegativeDelay(db, fms.fmsId, fms.fmsName));
+      } catch (err) {
+        console.error(`Data health check failed for ${fms.fmsName}:`, err instanceof Error ? err.message : err);
+      }
+    }
+
+    const checkedAt = new Date();
+    await db.insert(dataHealthCache).values({ id: 1, checkedAt, issueCount: allIssues.length, issues: allIssues })
+      .onConflictDoUpdate({ target: dataHealthCache.id, set: { checkedAt, issueCount: allIssues.length, issues: allIssues } });
+    console.log(`Data health: ${allIssues.length} issue(s) found across ${syncedFms.length} synced FMS.`);
   } finally {
     await pool.end();
   }
