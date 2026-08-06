@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { and, asc, desc, eq, getTableColumns, gte, lte, sql } from 'drizzle-orm';
-import { records, stageEvents } from '@fms/db';
+import { records, stageEvents, actionItems } from '@fms/db';
 import { ok, AppError } from '@fms/core';
 import { requireAuth } from '../middleware/auth';
 import type { Variables } from '../types';
@@ -75,5 +75,9 @@ recordsRoutes.get('/:fmsId/:recordId', requireAuth('records.view'), async (c) =>
     .where(and(eq(stageEvents.fmsId, fmsId), eq(stageEvents.recordId, recordId)))
     .orderBy(asc(stageEvents.stageIndex));
 
-  return c.json(ok({ record, stages }));
+  const actions = await db.select().from(actionItems)
+    .where(and(eq(actionItems.fmsId, fmsId), eq(actionItems.recordId, recordId), eq(actionItems.isDeleted, false)))
+    .orderBy(desc(actionItems.createdAt));
+
+  return c.json(ok({ record, stages, actions }));
 });

@@ -30,6 +30,10 @@ export const PENDING_RECORD_STATUSES: readonly string[] = [
   STATUS.RECORD.OVERDUE, STATUS.RECORD.STALLED,
 ];
 
+export const ACTION_TYPES = ['Follow-up', 'Correction', 'Escalation', 'Review', 'Data Update', 'Management Decision', 'Other'] as const;
+export const ACTION_STATUSES = ['Open', 'In Progress', 'Waiting', 'Resolved', 'Cancelled'] as const;
+export const ACTION_PRIORITIES = ['Low', 'Medium', 'High', 'Critical'] as const;
+
 export const PERMISSIONS = [
   'dashboard.view', 'fms.view', 'fms.manage', 'records.view', 'actions.view', 'actions.add', 'actions.edit',
   'actions.close', 'actions.delete', 'reports.view', 'reports.export', 'users.view', 'users.add',

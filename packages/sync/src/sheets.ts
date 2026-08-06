@@ -19,16 +19,19 @@ function getAuth() {
 const STATUS_CACHE_HEADERS: (keyof StatusCacheRow)[] = [
   'record_id', 'raw_row', 'display_name', 'current_stage', 'doer', 'doer_email', 'plan_time_iso',
   'record_status', 'delay_json', 'completed_steps', 'total_steps', 'last_update_iso', 'freshness',
-  'sequence_exception', 'stage_results_json', 'is_closed', 'updated_at',
+  'sequence_exception', 'stage_results_json', 'is_closed', 'updated_at', 'details_json',
 ];
 
-// Reads the FULL Status_Cache sheet (A:Q) in one call — see plan's answer to "does the sync job
-// need its own is_closed watermark": no, Status_Cache is already small/lean per FMS, a full read
-// every run is cheap at this app's scale and avoids duplicating the publisher's own cursor logic.
+// Reads the FULL Status_Cache sheet (A:R — 18 columns, see STATUS_CACHE_HEADERS) in one call —
+// see plan's answer to "does the sync job need its own is_closed watermark": no, Status_Cache is
+// already small/lean per FMS, a full read every run is cheap at this app's scale and avoids
+// duplicating the publisher's own cursor logic. An FMS still running an older
+// FMS_Status_Publisher.gs (17 columns, no details_json) just reads back '' for column R here,
+// which transformStatusCacheRow already treats as "no details available" rather than an error.
 export async function readStatusCacheSheet(spreadsheetId: string, sheetName: string): Promise<StatusCacheRow[]> {
   const auth = getAuth();
   const sheets = google.sheets({ version: 'v4', auth });
-  const range = `${sheetName}!A:Q`;
+  const range = `${sheetName}!A:R`;
   const resp = await sheets.spreadsheets.values.get({ spreadsheetId, range, valueRenderOption: 'UNFORMATTED_VALUE' });
   const rows = resp.data.values ?? [];
   if (rows.length < 2) return [];

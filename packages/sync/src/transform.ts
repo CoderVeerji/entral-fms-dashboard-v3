@@ -1,9 +1,9 @@
 // Pure, dependency-injected Sheets-row -> Postgres-row transform (no network calls) — see plan
 // §"Test strategy". Input shape matches FMS_Status_Publisher.gs's STATUS_CACHE_HEADERS exactly
-// (app/FMS_Status_Publisher.gs, unchanged by this migration):
+// (app/FMS_Status_Publisher.gs):
 //   record_id, raw_row, display_name, current_stage, doer, doer_email, plan_time_iso,
 //   record_status, delay_json, completed_steps, total_steps, last_update_iso, freshness,
-//   sequence_exception, stage_results_json, is_closed, updated_at
+//   sequence_exception, stage_results_json, is_closed, updated_at, details_json
 
 export interface StatusCacheRow {
   record_id: string;
@@ -23,6 +23,10 @@ export interface StatusCacheRow {
   stage_results_json: string;
   is_closed: boolean | string;
   updated_at: string;
+  // Optional — absent entirely for an FMS still running an older publisher script (see
+  // app/FMS_Status_Publisher.gs's header comment); transformStatusCacheRow treats that the same
+  // as an empty object, never an error.
+  details_json?: string;
 }
 
 interface RawStageResult {
@@ -54,6 +58,7 @@ export interface NormalizedRecord {
   sequenceException: boolean;
   isClosed: boolean;
   isArchived: boolean;
+  details: Record<string, unknown> | null;
 }
 
 export interface NormalizedStageEvent {
@@ -106,6 +111,7 @@ export function transformStatusCacheRow(fmsId: string, row: StatusCacheRow): {
     sequenceException: toBool(row.sequence_exception),
     isClosed: toBool(row.is_closed),
     isArchived: false,
+    details: parseJsonOrNull<Record<string, unknown>>(row.details_json),
   };
 
   const rawStages = parseJsonOrNull<RawStageResult[]>(row.stage_results_json) ?? [];

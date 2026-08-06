@@ -98,4 +98,29 @@ describeIfDb('fms routes (integration)', () => {
     const body = await asJson(res);
     expect(body.code).toBe('INVALID_INPUT');
   });
+
+  it('a viewer cannot deactivate an FMS (403)', async () => {
+    const res = await app.request(`/api/fms/${createdFmsId}/status`, {
+      method: 'PATCH', headers: { Authorization: `Bearer ${viewerToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active: false }),
+    }, env);
+    expect(res.status).toBe(403);
+  });
+
+  it('a manager can deactivate then reactivate an FMS', async () => {
+    const offRes = await app.request(`/api/fms/${createdFmsId}/status`, {
+      method: 'PATCH', headers: { Authorization: `Bearer ${managerToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active: false }),
+    }, env);
+    expect(offRes.status).toBe(200);
+    const listRes = await app.request('/api/fms', { headers: { Authorization: `Bearer ${viewerToken}` } }, env);
+    const listBody = await asJson(listRes);
+    expect(listBody.data.find((f: { fmsId: string }) => f.fmsId === createdFmsId).active).toBe(false);
+
+    const onRes = await app.request(`/api/fms/${createdFmsId}/status`, {
+      method: 'PATCH', headers: { Authorization: `Bearer ${managerToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active: true }),
+    }, env);
+    expect(onRes.status).toBe(200);
+  });
 });

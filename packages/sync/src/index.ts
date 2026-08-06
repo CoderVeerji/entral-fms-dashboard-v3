@@ -64,6 +64,7 @@ async function main() {
           fmsId: fms.fmsId, startedAt, completedAt: new Date(), status: 'SUCCESS',
           rowsRead: rawRows.length, durationMs: Date.now() - startedAt.getTime(), triggeredBy: 'sync-job',
         });
+        await db.update(fmsMaster).set({ lastSuccessfulSync: new Date(), lastSyncStatus: 'SUCCESS' }).where(eq(fmsMaster.fmsId, fms.fmsId));
         console.log(`Synced ${fms.fmsName}: ${rawRows.length} rows, ${archivedIds.length} newly archived, ${duplicateIds.length} duplicates.`);
         syncedFms.push({ fmsId: fms.fmsId, fmsName: fms.fmsName });
       } catch (err) {
@@ -75,6 +76,7 @@ async function main() {
           fmsId: fms.fmsId, startedAt, completedAt: new Date(), status: 'FAILED',
           rowsRead: 0, durationMs: Date.now() - startedAt.getTime(), errorMessage: message, triggeredBy: 'sync-job',
         });
+        await db.update(fmsMaster).set({ lastSyncStatus: 'FAILED' }).where(eq(fmsMaster.fmsId, fms.fmsId));
       }
     }
 

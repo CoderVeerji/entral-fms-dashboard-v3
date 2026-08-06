@@ -10,3 +10,9 @@ compatibility_flags = ["nodejs_compat"]
 
 [observability]
 enabled = true
+
+# Keeps Neon's free-tier compute from auto-suspending (every 4 min, under its ~5 min idle
+# threshold) so real user requests don't pay the multi-second/occasional-error cold-start cost —
+# see src/index.ts's scheduled() handler and plan §"Known risks with the free/no-card constraint".
+[triggers]
+crons = ["*/4 * * * *"]

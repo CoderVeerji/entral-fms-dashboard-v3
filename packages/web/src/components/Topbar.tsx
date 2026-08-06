@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useNavigation } from '../context/NavigationContext';
 import * as api from '../api';
 import { PAGE_TITLES } from '../nav';
 import { applyTheme, getStoredTheme } from '../theme';
@@ -12,6 +13,7 @@ interface TopbarProps {
 
 export function Topbar({ route, onToggleSidebar }: TopbarProps) {
   const { user, token, logout } = useAuth();
+  const { navigate } = useNavigation();
   const [isDark, setIsDark] = useState(getStoredTheme() === 'dark');
   const [menuOpen, setMenuOpen] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -61,6 +63,9 @@ export function Topbar({ route, onToggleSidebar }: TopbarProps) {
         </div>
         {menuOpen && (
           <div className="dropdown-menu" onMouseLeave={() => setMenuOpen(false)}>
+            <div className="dm-item" onClick={() => { navigate('myAccount'); setMenuOpen(false); }}>
+              <i className="fas fa-user" /> My Account
+            </div>
             <div className="dm-item" onClick={() => { setShowChangePassword(true); setMenuOpen(false); }}>
               <i className="fas fa-key" /> Change Password
             </div>

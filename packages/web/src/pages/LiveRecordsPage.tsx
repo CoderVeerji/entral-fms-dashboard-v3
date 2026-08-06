@@ -1,7 +1,14 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useNavigation } from '../context/NavigationContext';
 import * as api from '../api';
 import type { FmsConfig, RecordRow } from '../api';
+import { StatusBadge } from '../components/StatusBadge';
+import { RecordDrawer } from '../components/RecordDrawer';
+import { EmptyState } from '../components/EmptyState';
+import { SkeletonBlock } from '../components/SkeletonBlock';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
+import { exportCsv } from '../utils/csv';
 
 const PAGE_SIZE = 25;
 
@@ -11,30 +18,35 @@ const STATUS_OPTIONS = [
 ];
 const FRESHNESS_OPTIONS = ['Fresh', 'Warning', 'Stale', 'Critical', 'Never'];
 
-// Same color mapping as app/index.html's STATUS_BADGE_MAP, trimmed to the colors styles.css
-// defines (green/red/amber/blue/grey).
-function statusColor(status: string): string {
-  if (status === 'OVERDUE' || status === 'STALLED') return 'red';
-  if (status === 'DATA_EXCEPTION') return 'red';
-  if (status === 'AT_RISK') return 'amber';
-  if (status === 'COMPLETED_LATE') return 'amber';
-  if (status === 'COMPLETED_ON_TIME' || status === 'COMPLETED_EARLY') return 'green';
-  if (status === 'RUNNING_ON_TIME') return 'blue';
-  return 'grey';
+// Port of app/index.html's row-class logic — tints the whole row by status so a scan down the
+// table shows trouble at a glance, not just in the Status column's badge.
+function rowClass(status: string): string {
+  if (status === 'DATA_EXCEPTION') return 'row-exception';
+  if (status === 'OVERDUE' || status === 'STALLED') return 'row-overdue';
+  if (status === 'AT_RISK') return 'row-atrisk';
+  if (status === 'COMPLETED_ON_TIME') return 'row-ontime';
+  if (status === 'COMPLETED_LATE') return 'row-late';
+  return '';
 }
 
 export function LiveRecordsPage() {
   const { token } = useAuth();
+  // Seeds filters from a cross-page jump (e.g. Dashboard's "Overdue" KPI card or an FMS Health
+  // card carries fmsId/status here via useNavigation().params) — read once on mount only, so the
+  // user's own subsequent filter changes on this page are never silently overwritten.
+  const { params: navParams } = useNavigation();
   const [fmsList, setFmsList] = useState<FmsConfig[]>([]);
-  const [fmsId, setFmsId] = useState('');
-  const [status, setStatus] = useState('');
-  const [freshness, setFreshness] = useState('');
+  const [fmsId, setFmsId] = useState(navParams.fmsId ?? '');
+  const [status, setStatus] = useState(navParams.status ?? '');
+  const [freshness, setFreshness] = useState(navParams.freshness ?? '');
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search);
   const [page, setPage] = useState(0);
   const [rows, setRows] = useState<RecordRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<{ fmsId: string; recordId: string } | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -47,18 +59,28 @@ export function LiveRecordsPage() {
     setError(null);
     const res = await api.getRecords(token, {
       fmsId: fmsId || undefined, status: status || undefined, freshness: freshness || undefined,
-      search: search || undefined, start: page * PAGE_SIZE, length: PAGE_SIZE,
+      search: debouncedSearch || undefined, start: page * PAGE_SIZE, length: PAGE_SIZE,
     });
     setLoading(false);
     if (!res.ok) { setError(res.message); return; }
     setRows(res.data.records);
     setTotal(res.data.total);
-  }, [token, fmsId, status, freshness, search, page]);
+  }, [token, fmsId, status, freshness, debouncedSearch, page]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setPage(0); }, [fmsId, status, freshness, search]);
+  useEffect(() => { setPage(0); }, [fmsId, status, freshness, debouncedSearch]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  function exportRows() {
+    exportCsv('live-records',
+      ['Record', 'FMS', 'Stage', 'Doer', 'Status', 'Freshness', 'Plan Time', 'Delay'],
+      rows.map((r) => [
+        r.displayName || r.recordId, fmsList.find((f) => f.fmsId === r.fmsId)?.fmsName || r.fmsId,
+        r.currentStage || '', r.doer || '', r.recordStatus, r.freshness || '',
+        r.planTime ? new Date(r.planTime).toLocaleString() : '', r.delay?.human || '',
+      ]));
+  }
 
   return (
     <div className="live-records-page">
@@ -79,45 +101,59 @@ export function LiveRecordsPage() {
           <option value="">Any Freshness</option>
           {FRESHNESS_OPTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
         </select>
+        <button className="btn btn-outline btn-sm no-print" disabled={rows.length === 0} onClick={exportRows}>
+          <i className="fas fa-file-csv" /> Export Page CSV
+        </button>
       </div>
 
       {error && <div className="login-error">{error}</div>}
 
-      {/* Wide data table: own horizontal-scroll container on narrow screens, per the shared
-          mobile breakpoint convention in styles.css — never shrinks columns illegibly. */}
-      <div className="table-scroll">
-        <table className="records-table">
-          <thead>
-            <tr>
-              <th>Record</th><th>FMS</th><th>Stage</th><th>Doer</th><th>Status</th>
-              <th>Freshness</th><th>Plan Time</th><th>Delay</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={`${r.fmsId}:${r.recordId}`}>
-                <td>{r.displayName || r.recordId}</td>
-                <td>{fmsList.find((f) => f.fmsId === r.fmsId)?.fmsName || r.fmsId}</td>
-                <td>{r.currentStage || '—'}</td>
-                <td>{r.doer || '—'}</td>
-                <td><span className={'badge badge-' + statusColor(r.recordStatus)}>{r.recordStatus.replace(/_/g, ' ')}</span></td>
-                <td>{r.freshness || '—'}</td>
-                <td>{r.planTime ? new Date(r.planTime).toLocaleString() : '—'}</td>
-                <td>{r.delay?.human || '—'}</td>
+      {loading && rows.length === 0 ? (
+        <div className="card"><SkeletonBlock rows={6} /></div>
+      ) : (
+        /* Wide data table: own horizontal-scroll container on narrow screens, per the shared
+           mobile breakpoint convention in styles.css — never shrinks columns illegibly. */
+        <div className="table-scroll">
+          <table className="records-table">
+            <thead>
+              <tr>
+                <th>Record</th><th>FMS</th><th>Stage</th><th>Doer</th><th>Status</th>
+                <th>Freshness</th><th>Plan Time</th><th>Delay</th>
               </tr>
-            ))}
-            {!loading && rows.length === 0 && (
-              <tr><td colSpan={8} className="empty-state">No records match these filters.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr
+                  key={`${r.fmsId}:${r.recordId}`} className={`row-clickable ${rowClass(r.recordStatus)}`}
+                  onClick={() => setSelected({ fmsId: r.fmsId, recordId: r.recordId })}
+                >
+                  <td>{r.displayName || r.recordId}</td>
+                  <td>{fmsList.find((f) => f.fmsId === r.fmsId)?.fmsName || r.fmsId}</td>
+                  <td>{r.currentStage || '—'}</td>
+                  <td>{r.doer || '—'}</td>
+                  <td><StatusBadge status={r.recordStatus} /></td>
+                  <td><StatusBadge status={r.freshness} /></td>
+                  <td>{r.planTime ? new Date(r.planTime).toLocaleString() : '—'}</td>
+                  <td>{r.delay?.human || '—'}</td>
+                </tr>
+              ))}
+              {!loading && rows.length === 0 && (
+                <tr><td colSpan={8} style={{ padding: 0 }}><EmptyState icon="fa-table-list" title="No records match these filters" /></td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className="pagination">
         <button disabled={page === 0} onClick={() => setPage((p) => p - 1)}>Previous</button>
         <span>Page {page + 1} of {totalPages} ({total} records)</span>
         <button disabled={page + 1 >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</button>
       </div>
+
+      {selected && (
+        <RecordDrawer fmsId={selected.fmsId} recordId={selected.recordId} onClose={() => setSelected(null)} />
+      )}
     </div>
   );
 }

@@ -24,7 +24,7 @@ export async function upsertRecords(db: Db, rows: NormalizedRecord[]): Promise<v
         completedSteps: sql`excluded.completed_steps`, totalSteps: sql`excluded.total_steps`,
         lastUpdate: sql`excluded.last_update`, freshness: sql`excluded.freshness`,
         sequenceException: sql`excluded.sequence_exception`, isClosed: sql`excluded.is_closed`,
-        isArchived: sql`excluded.is_archived`, syncedAt: sql`now()`,
+        isArchived: sql`excluded.is_archived`, details: sql`excluded.details`, syncedAt: sql`now()`,
       },
     });
   }
@@ -53,9 +53,13 @@ export async function markArchived(db: Db, fmsId: string, recordIds: string[]): 
 // Recomputes this FMS's fms_eval_cache row from whatever is currently in `records`/`stage_events`
 // — mirrors app/Code.gs's evaluateFms_ + writeFmsEvalCacheRow_, using the ported aggregation/
 // scoring module (packages/core) instead of re-deriving the math here.
+const CRITICAL_SAMPLE_LIMIT = 50;
+
 export async function refreshFmsEvalCache(db: Db, fmsId: string): Promise<void> {
   const recordRows = await db.select({
     recordId: records.recordId, recordStatus: records.recordStatus, freshness: records.freshness,
+    displayName: records.displayName, currentStage: records.currentStage, doer: records.doer,
+    planTime: records.planTime, delay: records.delay, lastUpdate: records.lastUpdate,
   }).from(records).where(and(eq(records.fmsId, fmsId), eq(records.isArchived, false)));
 
   const stageRows = await db.select({
@@ -78,14 +82,34 @@ export async function refreshFmsEvalCache(db: Db, fmsId: string): Promise<void> 
   const freshness = computeFreshnessScore(recordsForAgg.map((r) => r.freshness));
   const overall = computeOverallFmsScore(timeliness, pendingHealth, dataQuality, freshness);
 
+  // Mirrors app/Code.gs's computeFmsLiteAggregate_ — the Dashboard's "Needs Attention" list:
+  // every OVERDUE/STALLED record or one whose freshness has gone Critical, worst delay first.
+  // This is what Central's Dashboard reads directly (fms_eval_cache.critical_sample) instead of
+  // scanning every record live on each page load.
+  const delayMinutes = (d: unknown): number => (d && typeof d === 'object' && 'minutes' in d ? Number((d as { minutes: unknown }).minutes) || 0 : 0);
+  const criticalSample = recordsForAgg
+    .filter((r) => r.recordStatus === 'OVERDUE' || r.recordStatus === 'STALLED' || r.freshness === 'Critical')
+    .sort((a, b) => delayMinutes(b.delay) - delayMinutes(a.delay))
+    .slice(0, CRITICAL_SAMPLE_LIMIT)
+    .map((r) => ({
+      recordId: r.recordId, displayName: r.displayName, currentStage: r.currentStage, doer: r.doer,
+      planTime: r.planTime ? r.planTime.toISOString() : null, delay: r.delay,
+      lastUpdate: r.lastUpdate ? r.lastUpdate.toISOString() : null, freshness: r.freshness, recordStatus: r.recordStatus,
+    }));
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const completedToday = recordsForAgg.filter((r) => r.lastUpdate && r.lastUpdate.toISOString().slice(0, 10) === todayStr
+    && (r.recordStatus === 'COMPLETED_ON_TIME' || r.recordStatus === 'COMPLETED_LATE')).length;
+
   await db.insert(fmsEvalCache).values({
     fmsId, computedAt: new Date(), totals, scores: { timeliness, pendingHealth, dataQuality, freshness, overall },
-    stageBottlenecks, doerBottlenecks, criticalSample: [], completedToday: 0,
+    stageBottlenecks, doerBottlenecks, criticalSample, completedToday,
   }).onConflictDoUpdate({
     target: fmsEvalCache.fmsId,
     set: {
       computedAt: sql`excluded.computed_at`, totals: sql`excluded.totals`, scores: sql`excluded.scores`,
       stageBottlenecks: sql`excluded.stage_bottlenecks`, doerBottlenecks: sql`excluded.doer_bottlenecks`,
+      criticalSample: sql`excluded.critical_sample`, completedToday: sql`excluded.completed_today`,
     },
   });
 }

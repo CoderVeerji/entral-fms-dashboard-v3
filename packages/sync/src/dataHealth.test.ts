@@ -6,7 +6,7 @@ function mkRow(recordId: string, displayName: string): NormalizedRow {
   const record: NormalizedRecord = {
     fmsId: 'fms_test', recordId, rawRow: 1, displayName, currentStage: 'Stage A', doer: '', doerEmail: '',
     planTime: null, recordStatus: 'RUNNING_ON_TIME', delay: null, completedSteps: 0, totalSteps: 1,
-    lastUpdate: null, freshness: 'Fresh', sequenceException: false, isClosed: false, isArchived: false,
+    lastUpdate: null, freshness: 'Fresh', sequenceException: false, isClosed: false, isArchived: false, details: null,
   };
   return { record, stageEvents: [] };
 }

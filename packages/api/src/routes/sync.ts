@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { ok, AppError } from '@fms/core';
 import { requireAuth } from '../middleware/auth';
+import { logAudit } from '../audit';
 import type { Env } from '../env';
 import type { Variables } from '../types';
 
@@ -16,6 +17,8 @@ export const syncRoutes = new Hono<{ Bindings: Env; Variables: Variables }>();
 const GITHUB_REPO = 'CoderVeerji/entral-fms-dashboard-v3';
 
 syncRoutes.post('/trigger', requireAuth('sync.run'), async (c) => {
+  const db = c.get('db');
+  const session = c.get('session');
   const githubToken = c.env.GITHUB_TOKEN;
   if (!githubToken) throw new AppError('SYNC_NOT_CONFIGURED', 'GITHUB_TOKEN is not set — Sync Now is unavailable until it is.');
 
@@ -31,8 +34,10 @@ syncRoutes.post('/trigger', requireAuth('sync.run'), async (c) => {
 
   if (res.status !== 204) {
     const body = await res.text();
+    await logAudit(db, { username: session.username, role: session.roleId, action: 'SYNC_TRIGGER', module: 'sync', success: false, errorMessage: `HTTP ${res.status}` });
     throw new AppError('SYNC_TRIGGER_FAILED', `GitHub declined the sync trigger (HTTP ${res.status}): ${body.slice(0, 300)}`);
   }
 
+  await logAudit(db, { username: session.username, role: session.roleId, action: 'SYNC_TRIGGER', module: 'sync' });
   return c.json(ok(true, 'Sync started — new data will land in about a minute.'));
 });

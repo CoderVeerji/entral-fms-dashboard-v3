@@ -4,6 +4,7 @@ import { sessions, users, roles } from '@fms/db';
 import type { Permission, PermissionMap } from '@fms/core';
 import { sha256Hex } from '../crypto';
 import { AppError } from '../errors';
+import { withDbRetry } from '../retry';
 import type { Variables } from '../types';
 
 // Direct analogue of app/Code.gs's requireSession_(token, requiredPermission). Re-reads the
@@ -20,7 +21,8 @@ export function requireAuth(permission?: Permission) {
     const db = c.get('db');
     const tokenHash = await sha256Hex(token);
 
-    const [session] = await db.select().from(sessions).where(eq(sessions.tokenHash, tokenHash)).limit(1);
+    const [session] = await withDbRetry('session lookup', () =>
+      db.select().from(sessions).where(eq(sessions.tokenHash, tokenHash)).limit(1));
     if (!session) throw new AppError('SESSION_INVALID', 'Your session is invalid. Please sign in again.');
     if (session.revoked) throw new AppError('SESSION_REVOKED', 'Your session has ended. Please sign in again.');
     if (!session.expiresAt || session.expiresAt.getTime() < Date.now()) {

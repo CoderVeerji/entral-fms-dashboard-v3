@@ -14,6 +14,7 @@ interface AuthState {
   login: (username: string, password: string, rememberMe: boolean) => Promise<{ ok: boolean; message: string }>;
   logout: () => Promise<void>;
   markPasswordChanged: () => void;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -67,8 +68,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser((u) => (u ? { ...u, mustChangePassword: false } : u));
   }, []);
 
+  // Re-fetches the session's user record — called after My Account profile edits so the topbar
+  // name/avatar update immediately without needing a full re-login.
+  const refreshUser = useCallback(async () => {
+    if (!token) return;
+    const res = await api.me(token);
+    if (res.ok) setUser(res.data);
+  }, [token]);
+
   return (
-    <AuthContext.Provider value={{ token, user, loading, login: doLogin, logout: doLogout, markPasswordChanged }}>
+    <AuthContext.Provider value={{ token, user, loading, login: doLogin, logout: doLogout, markPasswordChanged, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

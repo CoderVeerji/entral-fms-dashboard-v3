@@ -1,4 +1,8 @@
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ToastProvider } from './context/ToastContext';
+import { NavigationProvider } from './context/NavigationContext';
+import { ConfirmProvider } from './components/ConfirmDialog';
+import { LoadingBar } from './components/LoadingBar';
 import { LoginPage } from './pages/LoginPage';
 import { AuthenticatedApp } from './AuthenticatedApp';
 import { ChangePasswordScreen } from './pages/ChangePasswordScreen';
@@ -15,8 +19,15 @@ function Root() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <Root />
-    </AuthProvider>
+    <ToastProvider>
+      <ConfirmProvider>
+        <AuthProvider>
+          <NavigationProvider>
+            <LoadingBar />
+            <Root />
+          </NavigationProvider>
+        </AuthProvider>
+      </ConfirmProvider>
+    </ToastProvider>
   );
 }

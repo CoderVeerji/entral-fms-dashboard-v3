@@ -64,6 +64,16 @@ describe('transformStatusCacheRow', () => {
     const { stageEvents } = transformStatusCacheRow('fms_o2d', mkRow({ stage_results_json: '' }));
     expect(stageEvents).toEqual([]);
   });
+
+  it('parses details_json into the details object when present', () => {
+    const { record } = transformStatusCacheRow('fms_o2d', mkRow({ details_json: '{"Order ID":"ORD-5","Customer":"Acme Corp"}' }));
+    expect(record.details).toEqual({ 'Order ID': 'ORD-5', Customer: 'Acme Corp' });
+  });
+
+  it('an FMS still on an older publisher script (no details_json field at all) yields details: null, not a crash', () => {
+    const { record } = transformStatusCacheRow('fms_o2d', mkRow());
+    expect(record.details).toBeNull();
+  });
 });
 
 describe('findArchivedRecordIds', () => {

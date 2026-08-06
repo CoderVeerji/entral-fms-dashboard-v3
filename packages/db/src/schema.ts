@@ -130,6 +130,12 @@ export const records = pgTable('records', {
   sequenceException: boolean('sequence_exception').default(false),
   isClosed: boolean('is_closed').default(false),
   isArchived: boolean('is_archived').default(false),
+  // Free-text business columns from the source sheet (order ID, customer name, amount, etc. —
+  // everything before that FMS's first stage's Plan Time column), published by
+  // FMS_Status_Publisher.gs's details_json field. Never present for an FMS still running an
+  // older version of that script — Record Detail's Details tab treats an empty/missing object as
+  // "not available from this FMS yet" rather than an error.
+  details: jsonb('details'),
   syncedAt: timestamp('synced_at', { withTimezone: true }).defaultNow(),
 }, (t) => ({
   pk: primaryKey({ columns: [t.fmsId, t.recordId] }),
