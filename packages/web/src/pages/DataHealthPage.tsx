@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import * as api from '../api';
 import type { DataHealthIssue } from '../api';
+import { formatDateTime } from '../utils/date';
 
 const TYPE_LABELS: Record<string, string> = {
   DUPLICATE_RECORDS: 'Duplicate Records',
@@ -35,7 +36,7 @@ export function DataHealthPage() {
           {issues.length === 0 ? 'No issues found' : `${issues.length} issue${issues.length === 1 ? '' : 's'} found`}
         </div>
         <span style={{ fontSize: 12, color: 'var(--text-soft)' }}>
-          {checkedAt ? `Last checked ${new Date(checkedAt).toLocaleString()}` : 'Not checked yet'}
+          {checkedAt ? `Last checked ${formatDateTime(checkedAt)}` : 'Not checked yet'}
         </span>
       </div>
 

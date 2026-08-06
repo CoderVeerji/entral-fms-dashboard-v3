@@ -1,10 +1,14 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, type MouseEvent } from 'react';
 import { useAuth } from '../context/AuthContext';
 import * as api from '../api';
 import type { FmsConfig, DoerPerformanceRow } from '../api';
 import { EmptyState } from '../components/EmptyState';
 import { SkeletonBlock } from '../components/SkeletonBlock';
 import { Leaderboard } from '../components/Leaderboard';
+import { BucketDetailPanel, type DrillTarget } from './BottleneckPage';
+
+const COMPLETED_STATUSES = 'COMPLETED_ON_TIME,COMPLETED_LATE,COMPLETED_EARLY,UNPLANNED_COMPLETED';
+const ON_TIME_STATUSES = 'COMPLETED_ON_TIME,COMPLETED_EARLY';
 
 function scoreColor(score: number | null): string {
   if (score === null) return 'grey';
@@ -20,6 +24,12 @@ export function DoerPerformancePage() {
   const [rows, setRows] = useState<DoerPerformanceRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [drillTarget, setDrillTarget] = useState<DrillTarget | null>(null);
+
+  function drill(e: MouseEvent, r: DoerPerformanceRow, status: string | undefined, label: string) {
+    e.stopPropagation();
+    setDrillTarget({ fmsId, scope: 'doer', key: r.doerName, status, label: `${r.doerName} — ${label}` });
+  }
 
   useEffect(() => {
     if (!token) return;
@@ -74,8 +84,8 @@ export function DoerPerformancePage() {
             <table className="records-table">
               <thead>
                 <tr>
-                  <th>Doer</th><th>FMS</th><th>Assigned</th><th>Completed</th><th>On Time</th>
-                  <th>Late</th><th>Overdue</th><th>Avg Delay</th><th>Open Actions</th><th>Score</th>
+                  <th>Doer</th><th>FMS Count</th><th>Assigned</th><th>Completed</th><th>On Time</th>
+                  <th>Late</th><th>Overdue</th><th>Stalled</th><th>Avg Delay</th><th>Open Actions</th><th>Score</th>
                 </tr>
               </thead>
               <tbody>
@@ -83,11 +93,14 @@ export function DoerPerformancePage() {
                   <tr key={r.email || r.doerName}>
                     <td>{r.doerName}</td>
                     <td>{r.fmsCount}</td>
-                    <td>{r.assignedStages}</td>
-                    <td>{r.completed}</td>
-                    <td>{r.onTime}</td>
-                    <td>{r.late}</td>
-                    <td>{r.overdue + r.stalled}</td>
+                    {/* Every count drills into the specific stage events behind it, same as
+                        Bottleneck Analysis — a doer's "4 overdue" is a dead end otherwise. */}
+                    <td><span className="stat-link" onClick={(e) => drill(e, r, undefined, 'All assigned stage events')}>{r.assignedStages}</span></td>
+                    <td><span className="stat-link" onClick={(e) => drill(e, r, COMPLETED_STATUSES, 'Completed')}>{r.completed}</span></td>
+                    <td><span className="stat-link" onClick={(e) => drill(e, r, ON_TIME_STATUSES, 'On time')}>{r.onTime}</span></td>
+                    <td><span className="stat-link" onClick={(e) => drill(e, r, 'COMPLETED_LATE', 'Completed late')}>{r.late}</span></td>
+                    <td><span className="stat-link" onClick={(e) => drill(e, r, 'OVERDUE', 'Overdue')}>{r.overdue}</span></td>
+                    <td><span className="stat-link" onClick={(e) => drill(e, r, 'STALLED', 'Stalled')}>{r.stalled}</span></td>
                     <td>{r.avgDelayMinutes != null ? `${r.avgDelayMinutes}m` : '—'}</td>
                     <td>{r.openActions || '—'}</td>
                     <td>
@@ -98,13 +111,15 @@ export function DoerPerformancePage() {
                   </tr>
                 ))}
                 {rows.length === 0 && (
-                  <tr><td colSpan={10} style={{ padding: 0 }}><EmptyState icon="fa-users" title="No doer activity for this scope" /></td></tr>
+                  <tr><td colSpan={11} style={{ padding: 0 }}><EmptyState icon="fa-users" title="No doer activity for this scope" /></td></tr>
                 )}
               </tbody>
             </table>
           </div>
         </>
       )}
+
+      {drillTarget && <BucketDetailPanel target={drillTarget} onClose={() => setDrillTarget(null)} />}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { EmptyState } from '../components/EmptyState';
 import { SkeletonBlock } from '../components/SkeletonBlock';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { exportCsv } from '../utils/csv';
+import { formatDateTime } from '../utils/date';
 
 const PAGE_SIZE = 25;
 
@@ -31,14 +32,17 @@ function rowClass(status: string): string {
 
 export function LiveRecordsPage() {
   const { token } = useAuth();
-  // Seeds filters from a cross-page jump (e.g. Dashboard's "Overdue" KPI card or an FMS Health
-  // card carries fmsId/status here via useNavigation().params) — read once on mount only, so the
-  // user's own subsequent filter changes on this page are never silently overwritten.
+  // Seeds filters from a cross-page jump (e.g. Dashboard's "Overdue" KPI card, an FMS Health
+  // card, or Bottleneck Analysis's "4 overdue" drill-down carries fmsId/status/stage/doer here
+  // via useNavigation().params) — read once on mount only, so the user's own subsequent filter
+  // changes on this page are never silently overwritten.
   const { params: navParams } = useNavigation();
   const [fmsList, setFmsList] = useState<FmsConfig[]>([]);
   const [fmsId, setFmsId] = useState(navParams.fmsId ?? '');
   const [status, setStatus] = useState(navParams.status ?? '');
   const [freshness, setFreshness] = useState(navParams.freshness ?? '');
+  const [stage, setStage] = useState(navParams.stage ?? '');
+  const [doer, setDoer] = useState(navParams.doer ?? '');
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search);
   const [page, setPage] = useState(0);
@@ -59,16 +63,17 @@ export function LiveRecordsPage() {
     setError(null);
     const res = await api.getRecords(token, {
       fmsId: fmsId || undefined, status: status || undefined, freshness: freshness || undefined,
+      stage: stage || undefined, doer: doer || undefined,
       search: debouncedSearch || undefined, start: page * PAGE_SIZE, length: PAGE_SIZE,
     });
     setLoading(false);
     if (!res.ok) { setError(res.message); return; }
     setRows(res.data.records);
     setTotal(res.data.total);
-  }, [token, fmsId, status, freshness, debouncedSearch, page]);
+  }, [token, fmsId, status, freshness, stage, doer, debouncedSearch, page]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setPage(0); }, [fmsId, status, freshness, debouncedSearch]);
+  useEffect(() => { setPage(0); }, [fmsId, status, freshness, stage, doer, debouncedSearch]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -78,7 +83,7 @@ export function LiveRecordsPage() {
       rows.map((r) => [
         r.displayName || r.recordId, fmsList.find((f) => f.fmsId === r.fmsId)?.fmsName || r.fmsId,
         r.currentStage || '', r.doer || '', r.recordStatus, r.freshness || '',
-        r.planTime ? new Date(r.planTime).toLocaleString() : '', r.delay?.human || '',
+        r.planTime ? formatDateTime(r.planTime) : '', r.delay?.human || '',
       ]));
   }
 
@@ -106,6 +111,16 @@ export function LiveRecordsPage() {
         </button>
       </div>
 
+      {(stage || doer) && (
+        // No dropdown for these two — they only ever arrive via a drill-down click from another
+        // page (Bottleneck Analysis's per-stage/per-doer counts), so this chip is the only way to
+        // see the filter is active and clear it.
+        <div className="filter-chip-bar">
+          {stage && <span className="filter-chip">Stage: {stage} <i className="fas fa-xmark" onClick={() => setStage('')} /></span>}
+          {doer && <span className="filter-chip">Doer: {doer} <i className="fas fa-xmark" onClick={() => setDoer('')} /></span>}
+        </div>
+      )}
+
       {error && <div className="login-error">{error}</div>}
 
       {loading && rows.length === 0 ? (
@@ -118,7 +133,7 @@ export function LiveRecordsPage() {
             <thead>
               <tr>
                 <th>Record</th><th>FMS</th><th>Stage</th><th>Doer</th><th>Status</th>
-                <th>Freshness</th><th>Plan Time</th><th>Delay</th>
+                <th>Freshness</th><th>Plan Time</th><th>Delay</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -133,12 +148,13 @@ export function LiveRecordsPage() {
                   <td>{r.doer || '—'}</td>
                   <td><StatusBadge status={r.recordStatus} /></td>
                   <td><StatusBadge status={r.freshness} /></td>
-                  <td>{r.planTime ? new Date(r.planTime).toLocaleString() : '—'}</td>
+                  <td>{r.planTime ? formatDateTime(r.planTime) : '—'}</td>
                   <td>{r.delay?.human || '—'}</td>
+                  <td className="row-view-cell" title="View details"><i className="fas fa-eye" /></td>
                 </tr>
               ))}
               {!loading && rows.length === 0 && (
-                <tr><td colSpan={8} style={{ padding: 0 }}><EmptyState icon="fa-table-list" title="No records match these filters" /></td></tr>
+                <tr><td colSpan={9} style={{ padding: 0 }}><EmptyState icon="fa-table-list" title="No records match these filters" /></td></tr>
               )}
             </tbody>
           </table>

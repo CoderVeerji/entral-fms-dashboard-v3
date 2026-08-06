@@ -8,6 +8,7 @@ import { StatusBadge } from '../components/StatusBadge';
 import { EmptyState } from '../components/EmptyState';
 import { SkeletonBlock } from '../components/SkeletonBlock';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
+import { formatDate, formatDateTime } from '../utils/date';
 
 const ACTION_TYPES = ['Follow-up', 'Correction', 'Escalation', 'Review', 'Data Update', 'Management Decision', 'Other'];
 const PRIORITIES = ['Low', 'Medium', 'High', 'Critical'];
@@ -142,7 +143,7 @@ function ActionRow({ action, onChanged }: { action: ActionItem; onChanged: () =>
         <td>{action.actionType}</td>
         <td>{action.assignedTo || '—'}</td>
         <td><StatusBadge status={action.status} /></td>
-        <td>{new Date(action.createdAt).toLocaleDateString()}</td>
+        <td>{formatDate(action.createdAt)}</td>
       </tr>
       {expanded && (
         <tr>
@@ -166,7 +167,7 @@ function ActionRow({ action, onChanged }: { action: ActionItem; onChanged: () =>
             {comments.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-soft)', marginBottom: 8 }}>No comments yet.</div>}
             {comments.map((c) => (
               <div key={c.commentId} style={{ fontSize: 12.5, marginBottom: 6 }}>
-                <b>{c.createdBy}</b> · {new Date(c.createdAt).toLocaleString()}<br />{c.comment}
+                <b>{c.createdBy}</b> · {formatDateTime(c.createdAt)}<br />{c.comment}
               </div>
             ))}
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }} onClick={(e) => e.stopPropagation()}>

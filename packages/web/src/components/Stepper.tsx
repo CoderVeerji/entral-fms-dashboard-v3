@@ -1,4 +1,5 @@
 import { StatusBadge } from './StatusBadge';
+import { formatDateTime } from '../utils/date';
 
 // Port of app/index.html's STEP_VISUAL_MAP/stepVisual/isStepDone — pulsing is reserved for
 // statuses still "live" and waiting on someone; a stage that hasn't started or is already
@@ -66,7 +67,7 @@ export function Stepper({ items, onCreateAction }: { items: StepperItem[]; onCre
                   Doer: {s.doerName || '—'} {s.doerEmail ? `(${s.doerEmail})` : ''}
                 </div>
                 <div style={{ fontSize: 12, marginTop: 4 }}>
-                  Plan: {s.planTime ? new Date(s.planTime).toLocaleString() : '—'} &nbsp;|&nbsp; Actual: {s.actualTime ? new Date(s.actualTime).toLocaleString() : '—'}
+                  Plan: {s.planTime ? formatDateTime(s.planTime) : '—'} &nbsp;|&nbsp; Actual: {s.actualTime ? formatDateTime(s.actualTime) : '—'}
                 </div>
                 {s.varianceMinutes != null && <div style={{ fontSize: 12, marginTop: 4 }}>Variance: {humanDelay(s.varianceMinutes)}</div>}
                 {onCreateAction && (

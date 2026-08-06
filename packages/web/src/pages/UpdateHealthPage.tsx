@@ -7,6 +7,7 @@ import { StatusBadge } from '../components/StatusBadge';
 import { RecordDrawer } from '../components/RecordDrawer';
 import { EmptyState } from '../components/EmptyState';
 import { SkeletonBlock } from '../components/SkeletonBlock';
+import { formatDateTime } from '../utils/date';
 
 const PAGE_SIZE = 25;
 
@@ -107,7 +108,7 @@ export function UpdateHealthPage() {
             <thead>
               <tr>
                 <th>Record</th><th>FMS</th><th>Stage</th><th>Doer</th><th>Freshness</th>
-                <th>Last Update</th><th>Hours Since</th><th>Open Actions</th>
+                <th>Last Update</th><th>Hours Since</th><th>Open Actions</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -118,13 +119,14 @@ export function UpdateHealthPage() {
                   <td>{r.currentStage || '—'}</td>
                   <td>{r.doer || '—'}</td>
                   <td><StatusBadge status={r.freshness || 'Never'} /></td>
-                  <td>{r.lastUpdate ? new Date(r.lastUpdate).toLocaleString() : 'Never'}</td>
+                  <td>{r.lastUpdate ? formatDateTime(r.lastUpdate) : 'Never'}</td>
                   <td>{hoursSince(r.lastUpdate) ?? '—'}</td>
                   <td>{r.openActions || '—'}</td>
+                  <td className="row-view-cell" title="View details"><i className="fas fa-eye" /></td>
                 </tr>
               ))}
               {!loading && rows.length === 0 && (
-                <tr><td colSpan={8} style={{ padding: 0 }}><EmptyState icon="fa-heart-pulse" title="No records match these filters" /></td></tr>
+                <tr><td colSpan={9} style={{ padding: 0 }}><EmptyState icon="fa-heart-pulse" title="No records match these filters" /></td></tr>
               )}
             </tbody>
           </table>

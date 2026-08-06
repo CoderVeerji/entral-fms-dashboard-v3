@@ -110,4 +110,27 @@ describeIfDb('bottlenecks routes (integration)', () => {
     const stageKeys = body.data.byStage.map((b: { key: string }) => b.key).sort();
     expect(stageKeys).toEqual(['Dispatch']); // Invoicing's only event completed outside the range
   });
+
+  it('detail: drills a stage bucket down to the underlying stage_events row', async () => {
+    const res = await app.request(`/api/bottlenecks/detail?fmsId=${fmsA}&scope=stage&key=Invoicing&status=COMPLETED_LATE`, auth(), env);
+    expect(res.status).toBe(200);
+    const body = await asJson(res);
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0].recordId).toBe('r1');
+    expect(body.data[0].doerName).toBe('Priya');
+    expect(body.data[0].displayName).toBe('Rec 1');
+  });
+
+  it('detail: a comma-separated status list matches any of them', async () => {
+    const res = await app.request(`/api/bottlenecks/detail?fmsId=${fmsA}&scope=doer&key=Ravi&status=OVERDUE,STALLED`, auth(), env);
+    const body = await asJson(res);
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0].stageName).toBe('Dispatch');
+  });
+
+  it('detail: omitting fmsId searches across every FMS for that doer', async () => {
+    const res = await app.request(`/api/bottlenecks/detail?scope=doer&key=Priya`, auth(), env);
+    const body = await asJson(res);
+    expect(body.data.some((r: { recordId: string }) => r.recordId === 'r1')).toBe(true);
+  });
 });

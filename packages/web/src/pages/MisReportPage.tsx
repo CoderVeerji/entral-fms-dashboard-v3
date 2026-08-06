@@ -1,9 +1,13 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, type MouseEvent } from 'react';
 import { useAuth } from '../context/AuthContext';
 import * as api from '../api';
 import type { FmsConfig, MisReport, MisStageBreakdown, MisFmsBreakdown } from '../api';
 import { KpiCard } from '../components/KpiCard';
 import { exportCsv } from '../utils/csv';
+import { BucketDetailPanel, type DrillTarget } from './BottleneckPage';
+
+const COMPLETED_STATUSES = 'COMPLETED_ON_TIME,COMPLETED_LATE,COMPLETED_EARLY,UNPLANNED_COMPLETED';
+const ON_TIME_STATUSES = 'COMPLETED_ON_TIME,COMPLETED_EARLY';
 
 type ReportType = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
 type ScoreMode = 'positive' | 'minus';
@@ -46,6 +50,7 @@ export function MisReportPage() {
   const [report, setReport] = useState<MisReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [drillTarget, setDrillTarget] = useState<DrillTarget | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -76,7 +81,18 @@ export function MisReportPage() {
       report.fmsBreakdown.map((f) => [f.fmsName, f.newRecords, f.completed, f.onTime, f.late, f.pending, f.overdue, f.onTimePercent ?? '']));
   }
 
-  function BreakdownTable({ title, rows, icon }: { title: string; rows: MisStageBreakdown[]; icon: string }) {
+  function BreakdownTable({ title, rows, icon, scope }: { title: string; rows: MisStageBreakdown[]; icon: string; scope: 'stage' | 'doer' }) {
+    // "Completed"/"On Time"/"Late" here are stage_events within this report's own period (see
+    // misReport.ts) — the drill-down must carry the same period bounds and status grouping the
+    // count was computed with, or the list wouldn't match the number shown.
+    function drill(e: MouseEvent, r: MisStageBreakdown, status: string | undefined, label: string) {
+      e.stopPropagation();
+      if (!report) return;
+      setDrillTarget({
+        fmsId: fmsId || undefined, scope, key: r.key, status,
+        dateFrom: report.periodStart, dateTo: report.periodEnd, label: `${r.key} — ${label} (${report.periodLabel})`,
+      });
+    }
     return (
       <>
         <div className="section-title"><i className={'fas ' + icon} />{title}</div>
@@ -88,7 +104,10 @@ export function MisReportPage() {
             <tbody>
               {rows.map((r) => (
                 <tr key={r.key}>
-                  <td>{r.key}</td><td>{r.completed}</td><td>{r.onTime}</td><td>{r.late}</td>
+                  <td>{r.key}</td>
+                  <td><span className="stat-link" onClick={(e) => drill(e, r, COMPLETED_STATUSES, 'Completed')}>{r.completed}</span></td>
+                  <td><span className="stat-link" onClick={(e) => drill(e, r, ON_TIME_STATUSES, 'On time')}>{r.onTime}</span></td>
+                  <td><span className="stat-link" onClick={(e) => drill(e, r, 'COMPLETED_LATE', 'Late')}>{r.late}</span></td>
                   <td><ScoreCell onTimePercent={r.onTimePercent} mode={scoreMode} /></td>
                 </tr>
               ))}
@@ -191,10 +210,12 @@ export function MisReportPage() {
             </table>
           </div>
 
-          <BreakdownTable title="By Stage" rows={report.stageBreakdown} icon="fa-diagram-project" />
-          <BreakdownTable title="By Doer" rows={report.doerBreakdown} icon="fa-users" />
+          <BreakdownTable title="By Stage" rows={report.stageBreakdown} icon="fa-diagram-project" scope="stage" />
+          <BreakdownTable title="By Doer" rows={report.doerBreakdown} icon="fa-users" scope="doer" />
         </>
       )}
+
+      {drillTarget && <BucketDetailPanel target={drillTarget} onClose={() => setDrillTarget(null)} />}
     </div>
   );
 }

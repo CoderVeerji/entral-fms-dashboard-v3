@@ -6,6 +6,7 @@ import * as api from '../api';
 import type { AdminUser, RoleRow } from '../api';
 import { EmptyState } from '../components/EmptyState';
 import { SkeletonBlock } from '../components/SkeletonBlock';
+import { formatDateTime } from '../utils/date';
 
 function NewUserForm({ roles, onCreated, onCancel }: { roles: RoleRow[]; onCreated: (tempPassword: string) => void; onCancel: () => void }) {
   const { token } = useAuth();
@@ -144,7 +145,7 @@ export function UsersPage() {
                   <td>{u.email || '—'}</td>
                   <td>{u.roleName || u.roleId}</td>
                   <td><span className={'badge badge-' + (u.status === 'ACTIVE' ? 'green' : 'grey')}>{u.status}</span></td>
-                  <td>{u.lastLogin ? new Date(u.lastLogin).toLocaleString() : 'Never'}</td>
+                  <td>{u.lastLogin ? formatDateTime(u.lastLogin) : 'Never'}</td>
                   <td style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     <button className="btn btn-outline btn-sm" onClick={() => toggleActive(u)}>{u.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}</button>
                     <button className="btn btn-outline btn-sm" onClick={() => unlock(u)}>Unlock</button>

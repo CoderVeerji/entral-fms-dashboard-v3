@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lte } from 'drizzle-orm';
 import { fmsMaster, fmsEvalCache, records, stageEvents } from '@fms/db';
-import { ok, computeAggregates, finalizeBucket, isStageCompleted, type FinalizedBucket } from '@fms/core';
+import { ok, AppError, computeAggregates, finalizeBucket, isStageCompleted, type FinalizedBucket } from '@fms/core';
 import { requireAuth } from '../middleware/auth';
 import type { Variables } from '../types';
 
@@ -85,4 +85,53 @@ bottlenecksRoutes.get('/', requireAuth('records.view'), async (c) => {
     byStage, byDoer,
     formula: '(overdue x4) + (stalled x4) + (late x2) + delayDays + (criticalStale x3) + (dataExceptions x2)',
   }));
+});
+
+// A bucket's overdue/stalled/late counts (above) are tallied from stage_events.status, which is
+// per-STAGE, not the same thing as records.record_status (a record's current stage can be fine
+// while an earlier or later stage independently reads OVERDUE — see aggregates.ts's
+// accumulateBucket). So "which records make up this 4?" can only be answered correctly by
+// querying stage_events directly, never by filtering Live Records on record_status — that would
+// silently show the wrong set. This endpoint is what Bottleneck/Doer Performance's drill-down
+// calls instead.
+bottlenecksRoutes.get('/detail', requireAuth('records.view'), async (c) => {
+  const db = c.get('db');
+  const q = c.req.query();
+  if (!q.key) throw new AppError('INVALID_INPUT', 'key is required.');
+  if (q.scope !== 'stage' && q.scope !== 'doer') throw new AppError('INVALID_INPUT', 'scope must be "stage" or "doer".');
+
+  // fmsId is optional — Doer Performance's rollup rows sum a doer across every FMS they touch
+  // (see doerPerformance.ts), so when its own fmsId filter is "All FMS" there's no single FMS to
+  // scope this drill-down to either.
+  const conditions = q.fmsId ? [eq(stageEvents.fmsId, q.fmsId)] : [];
+  conditions.push(q.scope === 'doer' ? eq(stageEvents.doerName, q.key) : eq(stageEvents.stageName, q.key));
+  // Comma-separated so a caller can ask for a bucket like "Completed" or "On Time", which are
+  // several STAGE statuses combined (see aggregates.ts's isStageCompleted), not one.
+  if (q.status) {
+    const statuses = q.status.split(',').map((s) => s.trim()).filter(Boolean);
+    if (statuses.length === 1) conditions.push(eq(stageEvents.status, statuses[0]));
+    else if (statuses.length > 1) conditions.push(inArray(stageEvents.status, statuses));
+  }
+  // Only MIS Report's drill-down uses these — its "Late"/"On Time"/"Completed" counts are scoped
+  // to actualTime falling inside the report period (see misReport.ts), unlike Bottleneck
+  // Analysis's buckets which (without its own date filter) look at everything ever.
+  if (q.dateFrom) {
+    const d = new Date(q.dateFrom);
+    if (!Number.isNaN(d.getTime())) conditions.push(gte(stageEvents.actualTime, d));
+  }
+  if (q.dateTo) {
+    const d = new Date(q.dateTo);
+    if (!Number.isNaN(d.getTime())) conditions.push(lte(stageEvents.actualTime, d));
+  }
+
+  const rows = await db.select({
+    fmsId: stageEvents.fmsId, recordId: stageEvents.recordId, displayName: records.displayName, stageName: stageEvents.stageName,
+    doerName: stageEvents.doerName, doerEmail: stageEvents.doerEmail, status: stageEvents.status,
+    planTime: stageEvents.planTime, actualTime: stageEvents.actualTime, varianceMinutes: stageEvents.varianceMinutes,
+  }).from(stageEvents)
+    .leftJoin(records, and(eq(records.fmsId, stageEvents.fmsId), eq(records.recordId, stageEvents.recordId)))
+    .where(and(...conditions))
+    .orderBy(desc(stageEvents.varianceMinutes));
+
+  return c.json(ok(rows));
 });

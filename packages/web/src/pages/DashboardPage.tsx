@@ -129,7 +129,24 @@ export function DashboardPage() {
                   <span style={{ fontSize: 12, color: 'var(--text-soft)', fontWeight: 600 }}> / 100</span>
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-soft)', marginTop: 4 }}>
-                  {f.activeRecords} active · {f.overdueRecords} overdue · {f.stalledRecords} stalled · {f.atRiskRecords} at risk
+                  {/* Each count drills into Live Records pre-filtered to exactly what it's counting —
+                      stopPropagation so clicking a number doesn't also fire the card's own
+                      fmsId-only click-through above it. */}
+                  <span className="stat-link" onClick={(e) => { e.stopPropagation(); navigate('liveRecords', { fmsId: f.fmsId }); }}>
+                    {f.activeRecords} active
+                  </span>
+                  {' · '}
+                  <span className="stat-link" onClick={(e) => { e.stopPropagation(); navigate('liveRecords', { fmsId: f.fmsId, status: 'OVERDUE' }); }}>
+                    {f.overdueRecords} overdue
+                  </span>
+                  {' · '}
+                  <span className="stat-link" onClick={(e) => { e.stopPropagation(); navigate('liveRecords', { fmsId: f.fmsId, status: 'STALLED' }); }}>
+                    {f.stalledRecords} stalled
+                  </span>
+                  {' · '}
+                  <span className="stat-link" onClick={(e) => { e.stopPropagation(); navigate('liveRecords', { fmsId: f.fmsId, status: 'AT_RISK' }); }}>
+                    {f.atRiskRecords} at risk
+                  </span>
                 </div>
               </>
             )}
@@ -146,7 +163,7 @@ export function DashboardPage() {
       <div className="table-scroll" style={{ marginBottom: 22 }}>
         <table className="records-table">
           <thead>
-            <tr><th>Record</th><th>FMS</th><th>Stage</th><th>Doer</th><th>Status</th><th>Delay</th><th>Freshness</th></tr>
+            <tr><th>Record</th><th>FMS</th><th>Stage</th><th>Doer</th><th>Status</th><th>Delay</th><th>Freshness</th><th></th></tr>
           </thead>
           <tbody>
             {needsAttention.map((r) => (
@@ -158,10 +175,11 @@ export function DashboardPage() {
                 <td><StatusBadge status={r.recordStatus} /></td>
                 <td>{r.delay?.human || '—'}</td>
                 <td><StatusBadge status={r.freshness} /></td>
+                <td className="row-view-cell" title="View details"><i className="fas fa-eye" /></td>
               </tr>
             ))}
             {needsAttention.length === 0 && (
-              <tr><td colSpan={7} style={{ padding: 0 }}><EmptyState icon="fa-circle-check" title="Nothing needs urgent attention right now" /></td></tr>
+              <tr><td colSpan={8} style={{ padding: 0 }}><EmptyState icon="fa-circle-check" title="Nothing needs urgent attention right now" /></td></tr>
             )}
           </tbody>
         </table>

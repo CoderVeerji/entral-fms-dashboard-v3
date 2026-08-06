@@ -252,6 +252,26 @@ tr.row-ontime td { background: var(--green-bg) !important; }
 tr.row-late td { background: #FBEAEA !important; }
 tr.row-exception td { background: var(--purple-bg) !important; }
 tr.row-clickable { cursor: pointer; }
+/* Inline count that drills into a filtered record list on click — e.g. FMS Health's
+   "4 overdue", Bottleneck's per-doer breakdown. Underline only shows up on hover so normal text
+   stays readable, but the whole span is a real click target (no tiny underline-only hit area). */
+.stat-link { cursor: pointer; border-bottom: 1px dashed transparent; }
+.stat-link:hover { color: var(--blue); border-bottom-color: var(--blue); }
+
+.filter-chip-bar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.filter-chip {
+  display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700;
+  padding: 5px 8px 5px 12px; border-radius: 20px; background: #E8F1FF; color: #0b53c4;
+}
+:root[data-theme="dark"] .filter-chip { background: var(--purple-bg); color: #C4A9FF; }
+.filter-chip i { cursor: pointer; font-size: 10px; opacity: .75; }
+.filter-chip i:hover { opacity: 1; }
+tr.row-clickable:hover td { filter: brightness(0.97); }
+:root[data-theme="dark"] tr.row-clickable:hover td { filter: brightness(1.15); }
+/* Trailing eye-icon cell on clickable table rows — makes "this row opens something" visible
+   instead of only discoverable by hovering and noticing the cursor change. */
+td.row-view-cell { width: 30px; text-align: center; color: var(--text-soft); font-size: 12px; }
+tr.row-clickable:hover td.row-view-cell { color: var(--blue); }
 
 /* ---------- Toasts ---------- */
 .toast-stack { position: fixed; top: 18px; right: 18px; z-index: 1200; display: flex; flex-direction: column; gap: 10px; max-width: 340px; }

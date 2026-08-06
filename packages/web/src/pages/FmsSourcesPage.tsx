@@ -7,6 +7,7 @@ import { EmptyState } from '../components/EmptyState';
 import { SkeletonBlock } from '../components/SkeletonBlock';
 import * as api from '../api';
 import type { FmsConfig } from '../api';
+import { formatDateTime } from '../utils/date';
 
 // Port of app/index.html's FmsModal — auto-derives Short Name from FMS Name until the user
 // manually edits Short Name themselves (then stops overwriting it).
@@ -161,7 +162,7 @@ export function FmsSourcesPage() {
                   <td><b>{f.fmsName}</b>{f.shortName && <span style={{ color: 'var(--text-soft)' }}> ({f.shortName})</span>}</td>
                   <td>{f.category || '—'}</td>
                   <td>{f.ownerName || '—'}</td>
-                  <td>{f.lastSuccessfulSync ? new Date(f.lastSuccessfulSync).toLocaleString() : 'Never'}</td>
+                  <td>{f.lastSuccessfulSync ? formatDateTime(f.lastSuccessfulSync) : 'Never'}</td>
                   <td><span className={'badge badge-' + (f.active ? 'green' : 'grey')}>{f.active ? 'Active' : 'Inactive'}</span></td>
                   <td style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     <button className="btn btn-outline btn-sm" onClick={() => setEditing(f)}><i className="fas fa-pen" /> Edit</button>

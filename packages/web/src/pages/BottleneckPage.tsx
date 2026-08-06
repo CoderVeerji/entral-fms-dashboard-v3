@@ -1,7 +1,13 @@
-import { Fragment, useEffect, useState, useCallback } from 'react';
+import { Fragment, useEffect, useState, useCallback, type MouseEvent } from 'react';
 import { useAuth } from '../context/AuthContext';
 import * as api from '../api';
-import type { FmsConfig, BottleneckBucket } from '../api';
+import type { FmsConfig, BottleneckBucket, BottleneckDetailRow } from '../api';
+import { Modal } from '../components/Modal';
+import { RecordDrawer } from '../components/RecordDrawer';
+import { StatusBadge } from '../components/StatusBadge';
+import { SkeletonBlock } from '../components/SkeletonBlock';
+import { EmptyState } from '../components/EmptyState';
+import { formatDateTime } from '../utils/date';
 
 function scoreColor(score: number): string {
   if (score >= 10) return 'red';
@@ -9,8 +15,76 @@ function scoreColor(score: number): string {
   return 'green';
 }
 
-function BucketTable({ rows, keyLabel }: { rows: BottleneckBucket[]; keyLabel: string }) {
+export interface DrillTarget { fmsId?: string; scope: 'stage' | 'doer'; key: string; status?: string; dateFrom?: string; dateTo?: string; label: string }
+
+// A bucket's count cells (Overdue/Stalled/Completed Late) are per-STAGE-EVENT, not the same thing
+// as a record's overall status — see bottlenecks.ts's /detail route comment. Clicking one opens
+// this panel instead of jumping to Live Records with a record-status filter, which would
+// silently show the wrong set of records.
+export function BucketDetailPanel({ target, onClose }: { target: DrillTarget; onClose: () => void }) {
+  const { token } = useAuth();
+  const [rows, setRows] = useState<BottleneckDetailRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [openRecord, setOpenRecord] = useState<{ fmsId: string; recordId: string } | null>(null);
+
+  useEffect(() => {
+    if (!token) return;
+    api.getBottleneckDetail(token, {
+      fmsId: target.fmsId, scope: target.scope, key: target.key, status: target.status,
+      dateFrom: target.dateFrom, dateTo: target.dateTo,
+    }).then((res) => { if (res.ok) setRows(res.data); else setError(res.message); });
+  }, [token, target]);
+
+  return (
+    <>
+      <Modal title={target.label} onClose={onClose} large>
+        {error && <div className="login-error">{error}</div>}
+        {!rows && !error && <SkeletonBlock rows={5} />}
+        {rows && rows.length === 0 && <EmptyState icon="fa-circle-check" title="No matching stage events" />}
+        {rows && rows.length > 0 && (
+          <div className="table-scroll">
+            <table className="records-table">
+              <thead>
+                <tr>
+                  <th>Record</th>{!target.fmsId && <th>FMS</th>}<th>{target.scope === 'stage' ? 'Doer' : 'Stage'}</th><th>Status</th>
+                  <th>Plan</th><th>Actual</th><th>Variance</th><th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={i} className="row-clickable" onClick={() => setOpenRecord({ fmsId: r.fmsId, recordId: r.recordId })}>
+                    <td>{r.displayName || r.recordId}</td>
+                    {!target.fmsId && <td>{r.fmsId}</td>}
+                    <td>{target.scope === 'stage' ? (r.doerName || '—') : r.stageName}</td>
+                    <td><StatusBadge status={r.status} /></td>
+                    <td>{r.planTime ? formatDateTime(r.planTime) : '—'}</td>
+                    <td>{r.actualTime ? formatDateTime(r.actualTime) : '—'}</td>
+                    <td>{r.varianceMinutes != null ? `${r.varianceMinutes}m` : '—'}</td>
+                    <td className="row-view-cell" title="View record"><i className="fas fa-eye" /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Modal>
+      {openRecord && <RecordDrawer fmsId={openRecord.fmsId} recordId={openRecord.recordId} onClose={() => setOpenRecord(null)} />}
+    </>
+  );
+}
+
+// keyLabel tells us whether each row's `key` is a stage name or a doer name, so a drill-down
+// click passes the right scope through to BucketDetailPanel.
+function BucketTable({ rows, keyLabel, onDrill }: {
+  rows: BottleneckBucket[]; keyLabel: 'Stage' | 'Doer'; onDrill: (target: DrillTarget) => void;
+}) {
   const [expanded, setExpanded] = useState<number | null>(null);
+
+  function drill(e: MouseEvent, b: BottleneckBucket, status: string | undefined, label: string) {
+    e.stopPropagation();
+    onDrill({ fmsId: b.fmsId, scope: keyLabel === 'Stage' ? 'stage' : 'doer', key: b.key, status, label: `${b.key} — ${label}` });
+  }
+
   return (
     <div className="table-scroll">
       <table className="records-table">
@@ -26,10 +100,13 @@ function BucketTable({ rows, keyLabel }: { rows: BottleneckBucket[]; keyLabel: s
               <tr onClick={() => setExpanded(expanded === i ? null : i)} style={{ cursor: 'pointer' }}>
                 <td>{b.key}</td>
                 <td>{b.fmsName}</td>
-                <td>{b.assigned}</td>
-                <td>{b.overdue}</td>
-                <td>{b.stalled}</td>
-                <td>{b.late}</td>
+                {/* Every count below is its own click target — "4 overdue" opens a panel showing
+                    exactly which stage events those 4 are, so "which 4?" is one click away
+                    instead of a dead-end number. */}
+                <td><span className="stat-link" onClick={(e) => drill(e, b, undefined, 'All assigned stage events')}>{b.assigned}</span></td>
+                <td><span className="stat-link" onClick={(e) => drill(e, b, 'OVERDUE', 'Overdue')}>{b.overdue}</span></td>
+                <td><span className="stat-link" onClick={(e) => drill(e, b, 'STALLED', 'Stalled')}>{b.stalled}</span></td>
+                <td><span className="stat-link" onClick={(e) => drill(e, b, 'COMPLETED_LATE', 'Completed late')}>{b.late}</span></td>
                 <td>{b.onTimePercent != null ? `${b.onTimePercent}%` : '—'}</td>
                 <td>{b.avgDelayHuman || '—'}</td>
                 <td><span className={'badge badge-' + scoreColor(b.bottleneckScore)}>{b.bottleneckScore}</span></td>
@@ -63,6 +140,7 @@ export function BottleneckPage() {
   const [byDoer, setByDoer] = useState<BottleneckBucket[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [drillTarget, setDrillTarget] = useState<DrillTarget | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -100,9 +178,11 @@ export function BottleneckPage() {
       {error && <div className="login-error">{error}</div>}
       {loading ? <div className="app-loading">Loading…</div> : (
         view === 'stage'
-          ? <BucketTable rows={byStage} keyLabel="Stage" />
-          : <BucketTable rows={byDoer} keyLabel="Doer" />
+          ? <BucketTable rows={byStage} keyLabel="Stage" onDrill={setDrillTarget} />
+          : <BucketTable rows={byDoer} keyLabel="Doer" onDrill={setDrillTarget} />
       )}
+
+      {drillTarget && <BucketDetailPanel target={drillTarget} onClose={() => setDrillTarget(null)} />}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import * as api from '../api';
 import type { AuditLogRow, SyncLogRow } from '../api';
+import { formatDateTime } from '../utils/date';
 
 function AuditLogTable({ rows }: { rows: AuditLogRow[] }) {
   return (
@@ -13,7 +14,7 @@ function AuditLogTable({ rows }: { rows: AuditLogRow[] }) {
         <tbody>
           {rows.map((r) => (
             <tr key={r.logId}>
-              <td>{new Date(r.timestamp).toLocaleString()}</td>
+              <td>{formatDateTime(r.timestamp)}</td>
               <td>{r.username || '—'}</td>
               <td>{r.role || '—'}</td>
               <td>{r.action || '—'}</td>
@@ -41,7 +42,7 @@ function SyncLogTable({ rows }: { rows: SyncLogRow[] }) {
         <tbody>
           {rows.map((r) => (
             <tr key={r.syncId}>
-              <td>{new Date(r.startedAt).toLocaleString()}</td>
+              <td>{formatDateTime(r.startedAt)}</td>
               <td>{r.fmsId}</td>
               <td><span className={'badge badge-' + (r.status === 'SUCCESS' ? 'green' : 'red')}>{r.status}</span></td>
               <td>{r.rowsRead}</td>

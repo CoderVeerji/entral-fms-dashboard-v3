@@ -157,6 +157,7 @@ export interface RecordRow {
 export interface RecordsQuery {
   fmsId?: string;
   status?: string;
+  stage?: string;
   freshness?: string;
   doer?: string;
   search?: string;
@@ -329,6 +330,28 @@ export function getBottlenecks(token: string, query: BottleneckQuery) {
   return request<{ byStage: BottleneckBucket[]; byDoer: BottleneckBucket[]; formula: string }>(
     `/api/bottlenecks?${params.toString()}`, {}, token,
   );
+}
+
+export interface BottleneckDetailRow {
+  fmsId: string;
+  recordId: string;
+  displayName: string | null;
+  stageName: string;
+  doerName: string | null;
+  doerEmail: string | null;
+  status: string;
+  planTime: string | null;
+  actualTime: string | null;
+  varianceMinutes: number | null;
+}
+
+// Drill-down for a bucket's count cells (e.g. "4 overdue") — queries stage_events directly
+// rather than Live Records, since a bucket's counts are per-stage-event, not the same thing as a
+// record's overall status (see bottlenecks.ts's /detail route comment).
+export function getBottleneckDetail(token: string, params: { fmsId?: string; scope: 'stage' | 'doer'; key: string; status?: string; dateFrom?: string; dateTo?: string }) {
+  const usp = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => { if (v) usp.set(k, String(v)); });
+  return request<BottleneckDetailRow[]>(`/api/bottlenecks/detail?${usp.toString()}`, {}, token);
 }
 
 export interface MisFmsBreakdown {

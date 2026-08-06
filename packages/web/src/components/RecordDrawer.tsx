@@ -11,6 +11,7 @@ import { ProgressBar } from './ProgressBar';
 import { Stepper } from './Stepper';
 import { DetailValue } from './DetailValue';
 import { copyToClipboard } from '../utils/clipboard';
+import { formatDateTime } from '../utils/date';
 
 type Tab = 'overview' | 'details' | 'timeline' | 'actions';
 
@@ -62,9 +63,9 @@ export function RecordDrawer({ fmsId, recordId, onClose }: { fmsId: string; reco
       `Stage: ${record.currentStage || '—'}`,
       `Status: ${record.recordStatus}`,
       `Doer: ${record.doer || '—'}`,
-      `Plan Time: ${record.planTime ? new Date(record.planTime).toLocaleString() : '—'}`,
+      `Plan Time: ${record.planTime ? formatDateTime(record.planTime) : '—'}`,
       `Delay: ${record.delay?.human || 'None'}`,
-      `Last Update: ${record.lastUpdate ? new Date(record.lastUpdate).toLocaleString() : 'Never'}`,
+      `Last Update: ${record.lastUpdate ? formatDateTime(record.lastUpdate) : 'Never'}`,
     ];
     const success = await copyToClipboard(lines.join('\n'));
     if (success) toast.success('Record summary copied.');
@@ -118,9 +119,9 @@ export function RecordDrawer({ fmsId, recordId, onClose }: { fmsId: string; reco
             <div className="stat-row"><span>Current Stage</span><b>{record.currentStage || '—'}</b></div>
             <div className="stat-row"><span>Status</span><StatusBadge status={record.recordStatus} /></div>
             <div className="stat-row"><span>Responsible</span><b>{record.doer || '—'}</b></div>
-            <div className="stat-row"><span>Plan Time</span><b>{record.planTime ? new Date(record.planTime).toLocaleString() : '—'}</b></div>
+            <div className="stat-row"><span>Plan Time</span><b>{record.planTime ? formatDateTime(record.planTime) : '—'}</b></div>
             <div className="stat-row"><span>Delay</span><b style={{ color: record.delay ? 'var(--red)' : 'inherit' }}>{record.delay?.human || 'None'}</b></div>
-            <div className="stat-row"><span>Last Update</span><b>{record.lastUpdate ? new Date(record.lastUpdate).toLocaleString() : 'Never'}</b></div>
+            <div className="stat-row"><span>Last Update</span><b>{record.lastUpdate ? formatDateTime(record.lastUpdate) : 'Never'}</b></div>
             <div className="stat-row"><span>Freshness</span><StatusBadge status={record.freshness} /></div>
             {record.sequenceException && (
               <div style={{ marginTop: 10 }}>
