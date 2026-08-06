@@ -19,6 +19,13 @@ describeIfDb('AI tools (integration)', () => {
   let db: ReturnType<typeof drizzle<typeof schema>>;
   const apiDb = DATABASE_URL ? createDb(DATABASE_URL) : null;
   const fmsA = 'fms_ai_tools_test_a';
+  // data_health_cache is a single GLOBAL row (id=1), shared with the real running app — unlike
+  // every other table this suite touches, there's no test-scoped fmsId to isolate it by. Back up
+  // whatever's really there before overwriting it, and restore it exactly in afterAll's finally.
+  // (Real incident during implementation: an earlier version of this test overwrote it and never
+  // restored it, so a real user saw this suite's fake "test issue" on the live Data Health page
+  // and through the AI Assistant until the next real sync ran.)
+  let originalDataHealth: typeof schema.dataHealthCache.$inferSelect | undefined;
 
   beforeAll(async () => {
     pool = new Pool({ connectionString: DATABASE_URL });
@@ -42,6 +49,9 @@ describeIfDb('AI tools (integration)', () => {
       { fmsId: fmsA, recordId: 'r2', displayName: 'On Track Order', doer: 'Ravi', recordStatus: 'RUNNING_ON_TIME', freshness: 'Fresh' },
     ]);
 
+    const [existing] = await db.select().from(schema.dataHealthCache).where(eq(schema.dataHealthCache.id, 1)).limit(1);
+    originalDataHealth = existing;
+
     await db.insert(schema.dataHealthCache).values({
       id: 1, checkedAt: new Date(), issueCount: 1,
       issues: [{ fmsId: fmsA, fmsName: 'AI Tools Test FMS', type: 'NEGATIVE_DELAY', detail: 'test issue' }],
@@ -52,10 +62,20 @@ describeIfDb('AI tools (integration)', () => {
   });
 
   afterAll(async () => {
-    await db.delete(schema.records).where(eq(schema.records.fmsId, fmsA));
-    await db.delete(schema.fmsEvalCache).where(eq(schema.fmsEvalCache.fmsId, fmsA));
-    await db.delete(schema.fmsMaster).where(eq(schema.fmsMaster.fmsId, fmsA));
-    await pool.end();
+    try {
+      await db.delete(schema.records).where(eq(schema.records.fmsId, fmsA));
+      await db.delete(schema.fmsEvalCache).where(eq(schema.fmsEvalCache.fmsId, fmsA));
+      await db.delete(schema.fmsMaster).where(eq(schema.fmsMaster.fmsId, fmsA));
+    } finally {
+      if (originalDataHealth) {
+        await db.update(schema.dataHealthCache).set({
+          checkedAt: originalDataHealth.checkedAt, issueCount: originalDataHealth.issueCount, issues: originalDataHealth.issues,
+        }).where(eq(schema.dataHealthCache.id, 1));
+      } else {
+        await db.delete(schema.dataHealthCache).where(eq(schema.dataHealthCache.id, 1));
+      }
+      await pool.end();
+    }
   });
 
   it('get_fms_overview reports this FMS\'s score and totals', async () => {
