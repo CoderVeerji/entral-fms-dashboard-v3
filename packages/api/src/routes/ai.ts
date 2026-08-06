@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { ok, AppError } from '@fms/core';
 import { requireAuth } from '../middleware/auth';
-import { callGemini, type GeminiContent } from '../ai/gemini';
+import { callGemini, GeminiError, type GeminiContent } from '../ai/gemini';
 import { AI_TOOLS, runAiTool } from '../ai/tools';
 import type { Env } from '../env';
 import type { Variables } from '../types';
@@ -10,9 +10,11 @@ export const aiRoutes = new Hono<{ Bindings: Env; Variables: Variables }>();
 
 const SYSTEM_INSTRUCTION = `You are the AI assistant embedded in Central FMS Dashboard, an internal operations-tracking tool for Le Fabco Pvt. Ltd. Staff use it to track records moving through a sequence of stages across several connected FMS (File Management Systems) — each record has a current stage, a doer (the person responsible), and a plan time.
 
-Answer only using the tools provided — never guess or invent a number, FMS name, doer name, or status. If a tool returns nothing relevant, say so plainly instead of speculating. Keep answers concise and concrete, citing the actual numbers a tool returned. When something looks like a real problem (a high bottleneck score, a cluster of overdue records, a data-quality issue), say so directly and suggest one or two specific, actionable next steps grounded in what the tools returned — never generic advice unconnected to the real data.
+Answer only using the tools provided — never guess or invent a number, FMS name, doer name, or status. If a tool returns nothing relevant, say so plainly instead of speculating. Keep answers concise and concrete, citing the actual numbers a tool returned. When something looks like a real problem (a cluster of overdue/stalled records, a low on-time percentage, a data-quality issue), say so directly and suggest one or two specific, actionable next steps grounded in what the tools returned — never generic advice unconnected to the real data.
 
-Format answers in markdown: use a short bold summary line, a table (with a header row) whenever you're presenting more than two rows of comparable data (per-stage or per-doer breakdowns, several FMS side by side), and bullet points for recommendations. Keep tables narrow — only the columns that matter for the question asked, not every field a tool returned.`;
+Describe performance in terms a non-technical reader immediately understands: on-time percentage (onTimePercent) and real counts (assigned, completed, late, overdue, stalled — e.g. "471 of 900 stages were late, 90% on time"). NEVER state a raw bottleneckScore number by itself (e.g. "score: 3985.7") — it's an internal ranking value with no intuitive scale and reads as made up; use it only to decide which rows are worth mentioning, never to describe them. Rank/compare using words ("the worst-performing stage") backed by the real counts, not the score number.
+
+Format answers in markdown: use a short bold summary line, a table (with a header row) whenever you're presenting more than two rows of comparable data (per-stage or per-doer breakdowns, several FMS side by side) — table columns should be percentages and counts, never a raw score column — and bullet points for recommendations. Keep tables narrow — only the columns that matter for the question asked.`;
 
 // Bounds how many times the model can call a tool before answering — a runaway loop would burn
 // through Gemini's free-tier daily quota fast (see plan §"M7"), so this fails loud instead.
@@ -42,15 +44,25 @@ aiRoutes.post('/chat', requireAuth('ai.chat'), async (c) => {
   contents.push({ role: 'user', parts: [{ text: message }] });
 
   let finalText: string | null = null;
-  for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
-    const result = await callGemini(apiKey, { systemInstruction: SYSTEM_INSTRUCTION, contents, tools: AI_TOOLS });
-    contents.push(result.content);
-    if (!result.functionCalls.length) { finalText = result.text; break; }
+  try {
+    for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
+      const result = await callGeminiWithRetry(apiKey, { systemInstruction: SYSTEM_INSTRUCTION, contents, tools: AI_TOOLS });
+      contents.push(result.content);
+      if (!result.functionCalls.length) { finalText = result.text; break; }
 
-    for (const call of result.functionCalls) {
-      const toolResult = await runAiTool(db, call.name, call.args);
-      contents.push({ role: 'user', parts: [{ functionResponse: { name: call.name, response: { result: toolResult } } }] });
+      for (const call of result.functionCalls) {
+        const toolResult = await runAiTool(db, call.name, call.args);
+        contents.push({ role: 'user', parts: [{ functionResponse: { name: call.name, response: { result: toolResult } } }] });
+      }
     }
+  } catch (err) {
+    // Never leak Gemini's raw error JSON to the chat UI — translate to something a user can act
+    // on. 429 is expected occasional behavior here, not a bug: real-world testing found this
+    // free-tier key's actual limit is 5 requests/minute, and one question can cost several calls.
+    if (err instanceof GeminiError && err.status === 429) {
+      throw new AppError('AI_RATE_LIMITED', 'The AI Assistant is getting a lot of questions right now — wait about 20 seconds and try again.');
+    }
+    throw new AppError('AI_ERROR', 'The AI Assistant had trouble answering that — please try again.');
   }
 
   if (finalText === null) {
@@ -59,3 +71,18 @@ aiRoutes.post('/chat', requireAuth('ai.chat'), async (c) => {
 
   return c.json(ok({ text: finalText }));
 });
+
+// One retry, after Gemini's own suggested wait (capped) — matches REBUILD_PLAN's "no retry
+// storms" principle: a single bounded retry for a transient rate limit, not a loop.
+async function callGeminiWithRetry(apiKey: string, params: Parameters<typeof callGemini>[1]) {
+  try {
+    return await callGemini(apiKey, params);
+  } catch (err) {
+    if (err instanceof GeminiError && err.status === 429) {
+      const waitSeconds = Math.min(err.retryAfterSeconds ?? 5, 20);
+      await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
+      return await callGemini(apiKey, params);
+    }
+    throw err;
+  }
+}

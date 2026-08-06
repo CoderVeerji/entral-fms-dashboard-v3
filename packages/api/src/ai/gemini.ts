@@ -42,7 +42,15 @@ export interface GeminiCallResult {
   functionCalls: { name: string; args: Record<string, unknown> }[];
 }
 
-export class GeminiError extends Error {}
+export class GeminiError extends Error {
+  status?: number;
+  // Only set for a 429 — Gemini's own error body includes a suggested wait, e.g.
+  // `"retryDelay":"15.8s"`. Real-world testing found this free-tier key's actual limit is 5
+  // requests/minute (tighter than the ~10 RPM commonly cited), and this feature's tool-calling
+  // loop can make several calls answering one question, so hitting this is expected occasional
+  // behavior, not a bug to eliminate — see ai.ts's single-retry handling.
+  retryAfterSeconds?: number;
+}
 
 export async function callGemini(apiKey: string, params: {
   systemInstruction?: string;
@@ -61,7 +69,13 @@ export async function callGemini(apiKey: string, params: {
 
   if (!res.ok) {
     const errBody = await res.text();
-    throw new GeminiError(`Gemini API HTTP ${res.status}: ${errBody.slice(0, 500)}`);
+    const err = new GeminiError(`Gemini API HTTP ${res.status}: ${errBody.slice(0, 500)}`);
+    err.status = res.status;
+    if (res.status === 429) {
+      const m = /"retryDelay":\s*"(\d+(?:\.\d+)?)s"/.exec(errBody);
+      if (m) err.retryAfterSeconds = Math.ceil(Number(m[1]));
+    }
+    throw err;
   }
 
   const data = await res.json<{ candidates?: { content: GeminiContent; finishReason?: string }[] }>();
