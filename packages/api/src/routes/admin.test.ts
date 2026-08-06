@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import * as schema from '@fms/db';
 import app from '../index';
 import { generateId, generateSalt, hashPassword } from '../crypto';
@@ -30,12 +30,27 @@ describeIfDb('admin routes (integration)', () => {
   let superToken: string;
   let limitedToken: string;
   let createdUserId: string;
+  let otherActiveSuperAdminIds: string[] = [];
 
   const env = { DATABASE_URL: DATABASE_URL! };
 
   beforeAll(async () => {
     pool = new Pool({ connectionString: DATABASE_URL });
     db = drizzle(pool, { schema });
+
+    // This suite runs against the real shared Neon DB (see feedback_neon_http_driver_ci memory),
+    // which already has a real seeded Super Administrator (packages/db/src/seed.ts) plus whatever
+    // other Super Admins exist in practice. The "refuses to deactivate the last active Super Admin"
+    // test below needs its own test user to genuinely BE the last one, so we park every other
+    // active Super Admin as INACTIVE for the duration of this suite and restore them in afterAll
+    // (try/finally below) so a mid-run crash can't leave a real admin locked out.
+    const others = await db.select({ userId: schema.users.userId }).from(schema.users).where(
+      and(eq(schema.users.roleId, 'SUPER_ADMIN'), eq(schema.users.status, 'ACTIVE'), eq(schema.users.isDeleted, false)),
+    );
+    otherActiveSuperAdminIds = others.map((u) => u.userId);
+    if (otherActiveSuperAdminIds.length) {
+      await db.update(schema.users).set({ status: 'INACTIVE' }).where(inArray(schema.users.userId, otherActiveSuperAdminIds));
+    }
 
     await db.insert(schema.roles).values([
       { roleId: superRoleId, roleName: 'Test Admin Super', permissions: { 'users.view': true, 'users.add': true, 'users.edit': true, 'roles.view': true, 'roles.edit': true, 'settings.view': true, 'settings.edit': true, 'audit.view': true }, status: 'ACTIVE' },
@@ -59,14 +74,22 @@ describeIfDb('admin routes (integration)', () => {
   });
 
   afterAll(async () => {
-    if (createdUserId) await db.delete(schema.users).where(eq(schema.users.userId, createdUserId));
-    await db.delete(schema.sessions).where(eq(schema.sessions.userId, superAdminId));
-    await db.delete(schema.sessions).where(eq(schema.sessions.userId, limitedId));
-    await db.delete(schema.users).where(eq(schema.users.userId, superAdminId));
-    await db.delete(schema.users).where(eq(schema.users.userId, limitedId));
-    await db.delete(schema.roles).where(eq(schema.roles.roleId, superRoleId));
-    await db.delete(schema.roles).where(eq(schema.roles.roleId, limitedRoleId));
-    await pool.end();
+    try {
+      if (createdUserId) await db.delete(schema.users).where(eq(schema.users.userId, createdUserId));
+      await db.delete(schema.sessions).where(eq(schema.sessions.userId, superAdminId));
+      await db.delete(schema.sessions).where(eq(schema.sessions.userId, limitedId));
+      await db.delete(schema.users).where(eq(schema.users.userId, superAdminId));
+      await db.delete(schema.users).where(eq(schema.users.userId, limitedId));
+      await db.delete(schema.roles).where(eq(schema.roles.roleId, superRoleId));
+      await db.delete(schema.roles).where(eq(schema.roles.roleId, limitedRoleId));
+    } finally {
+      // Restore real Super Admins parked in beforeAll — must run even if the cleanup above throws,
+      // otherwise a mid-run failure leaves the actual admin account locked out.
+      if (otherActiveSuperAdminIds.length) {
+        await db.update(schema.users).set({ status: 'ACTIVE' }).where(inArray(schema.users.userId, otherActiveSuperAdminIds));
+      }
+      await pool.end();
+    }
   });
 
   const authSuper = () => ({ headers: { Authorization: `Bearer ${superToken}`, 'Content-Type': 'application/json' } });
