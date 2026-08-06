@@ -42,13 +42,20 @@ export interface AggBucket {
   maxDelayMinutes: number;
   dataExceptions: number;
   criticalStale: number;
+  // Freshness is a RECORD-level fact (unlike overdue/stalled/late, which are genuinely per-stage),
+  // but accumulateBucket is called once per stage_event — without this, a doer or stage touching
+  // several stages of the same critically-stale record would count that one record's criticality
+  // once per stage, inflating criticalStale (and the bottleneckScore weight riding on it) past
+  // what's even possible system-wide. Tracked here so finalizeBucket's output stays a plain
+  // count; never spread into FinalizedBucket or serialized.
+  criticalStaleRecordIds: Set<string>;
 }
 
 export function newAggBucket(key: string, doerName?: string | null, doerEmail?: string | null): AggBucket {
   return {
     key, doerName: doerName || '', doerEmail: doerEmail || '', assigned: 0, completed: 0, onTime: 0,
     late: 0, pending: 0, overdue: 0, stalled: 0, totalDelayMinutes: 0, maxDelayMinutes: 0,
-    dataExceptions: 0, criticalStale: 0,
+    dataExceptions: 0, criticalStale: 0, criticalStaleRecordIds: new Set(),
   };
 }
 
@@ -75,7 +82,10 @@ export function accumulateBucket(bucket: AggBucket, stageEvent: StageEventForAgg
     if (stageEvent.status === STATUS.STAGE.STALLED) bucket.stalled++;
   }
   if (stageEvent.status === STATUS.STAGE.DATA_EXCEPTION) bucket.dataExceptions++;
-  if (recordFreshness === STATUS.FRESHNESS.CRITICAL) bucket.criticalStale++;
+  if (recordFreshness === STATUS.FRESHNESS.CRITICAL && !bucket.criticalStaleRecordIds.has(stageEvent.recordId)) {
+    bucket.criticalStaleRecordIds.add(stageEvent.recordId);
+    bucket.criticalStale++;
+  }
 }
 
 export interface FinalizedBucket {

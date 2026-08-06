@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import * as api from '../api';
 import type { AiChatTurn } from '../api';
+import { MarkdownView } from '../components/MarkdownView';
 
 const SUGGESTIONS = [
   'Which FMS needs attention right now?',
@@ -63,7 +64,7 @@ export function AiAssistantPage() {
         )}
         {messages.map((m, i) => (
           <div key={i} className={'ai-msg ' + (m.role === 'user' ? 'ai-msg-user' : 'ai-msg-model')}>
-            {m.text}
+            {m.role === 'model' ? <MarkdownView text={m.text} /> : m.text}
           </div>
         ))}
         {sending && (

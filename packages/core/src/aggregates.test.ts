@@ -47,6 +47,20 @@ describe('accumulateBucket', () => {
     accumulateBucket(bucket, mkEvent({ status: STATUS.STAGE.COMPLETED_ON_TIME }), STATUS.FRESHNESS.CRITICAL);
     expect(bucket.criticalStale).toBe(1);
   });
+
+  it('criticalStale counts each critically-stale RECORD once, not once per stage event', () => {
+    // Freshness is a record-level fact; a doer or stage touching several stages of the same
+    // record must not have that one record's criticality counted multiple times — a real
+    // inflation bug (found live: a doer showed 5,424 "critically stale" against a system-wide
+    // total of 1,527 critical records) traced to this exact scenario.
+    const bucket = newAggBucket('Doer A');
+    accumulateBucket(bucket, mkEvent({ recordId: 'r1', stageName: 'Stage 1', status: STATUS.STAGE.COMPLETED_ON_TIME }), STATUS.FRESHNESS.CRITICAL);
+    accumulateBucket(bucket, mkEvent({ recordId: 'r1', stageName: 'Stage 2', status: STATUS.STAGE.OVERDUE }), STATUS.FRESHNESS.CRITICAL);
+    accumulateBucket(bucket, mkEvent({ recordId: 'r1', stageName: 'Stage 3', status: STATUS.STAGE.STALLED }), STATUS.FRESHNESS.CRITICAL);
+    expect(bucket.criticalStale).toBe(1); // same record, three stages — counts once
+    accumulateBucket(bucket, mkEvent({ recordId: 'r2', stageName: 'Stage 1', status: STATUS.STAGE.STALLED }), STATUS.FRESHNESS.CRITICAL);
+    expect(bucket.criticalStale).toBe(2); // a genuinely different record adds one more
+  });
 });
 
 describe('finalizeBucket', () => {

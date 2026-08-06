@@ -425,6 +425,27 @@ tr.row-clickable:hover td.row-view-cell { color: var(--blue); }
 .ai-suggestion-chip:hover { border-color: var(--blue); color: var(--blue); }
 .ai-input-bar { display: flex; gap: 10px; margin-top: 4px; }
 .ai-input-bar input { flex: 1; }
+
+/* ---------- Markdown rendering inside AI chat bubbles (see components/MarkdownView.tsx) ---------- */
+.md-content > *:first-child { margin-top: 0 !important; }
+.md-content > *:last-child { margin-bottom: 0 !important; }
+.md-p { margin: 0 0 10px; }
+.md-heading { font-weight: 800; margin: 14px 0 6px; color: inherit; }
+.md-h1 { font-size: 16px; }
+.md-h2 { font-size: 14.5px; }
+.md-h3 { font-size: 13.5px; }
+.md-h4 { font-size: 13px; text-transform: uppercase; letter-spacing: .02em; opacity: .85; }
+.md-list { margin: 0 0 10px; padding-left: 20px; }
+.md-list li { margin-bottom: 4px; }
+.md-hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; opacity: .6; }
+.ai-msg-user .md-hr { border-top-color: rgba(255,255,255,.35); }
+.ai-msg code { background: var(--grey-bg); border-radius: 4px; padding: 1px 5px; font-size: 12px; font-family: ui-monospace, Consolas, monospace; }
+.ai-msg-user code { background: rgba(255,255,255,.2); }
+.md-table-scroll { overflow-x: auto; margin: 0 0 10px; border-radius: 10px; border: 1px solid var(--border); }
+.md-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.md-table th, .md-table td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.md-table th { background: var(--surface-alt); font-weight: 800; font-size: 11px; text-transform: uppercase; letter-spacing: .02em; color: var(--text-soft); }
+.md-table tr:last-child td { border-bottom: none; }
 @media (max-width: 760px) {
   .ai-chat-page { height: calc(100vh - 56px - 90px); }
   .ai-msg { max-width: 88%; }
