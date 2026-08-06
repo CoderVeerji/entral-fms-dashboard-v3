@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { eq, and, sql } from 'drizzle-orm';
 import { users, roles, sessions } from '@fms/db';
-import { ok, AppError, generateTempPassword } from '@fms/core';
+import { ok, AppError, generateTempPassword, ROLE_SEED } from '@fms/core';
 import { sha256Hex, hashPassword, generateSalt, generateToken, generateId, isValidEmail } from '../crypto';
 import { requireAuth } from '../middleware/auth';
 import { withDbRetry } from '../retry';
@@ -68,7 +68,11 @@ authRoutes.post('/login', async (c) => {
     user: {
       userId: user.userId, username: user.username, fullName: user.fullName, email: user.email,
       roleId: user.roleId, roleName: role.roleName, mustChangePassword: !!user.mustChangePassword,
-      permissions: role.permissions,
+      // See middleware/auth.ts's requireAuth for why SUPER_ADMIN's permissions are always
+      // computed fresh rather than trusting the stored row — this is what makes the nav sidebar
+      // (which reads user.permissions from this login response) agree with what the backend
+      // actually enforces.
+      permissions: role.roleId === 'SUPER_ADMIN' ? ROLE_SEED.SUPER_ADMIN : role.permissions,
     },
   }, 'Login successful.'));
 });

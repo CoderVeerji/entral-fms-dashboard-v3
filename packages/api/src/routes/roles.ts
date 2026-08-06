@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { and, eq } from 'drizzle-orm';
 import { roles } from '@fms/db';
-import { ok, AppError, PERMISSIONS, type PermissionMap } from '@fms/core';
+import { ok, AppError, PERMISSIONS, ROLE_SEED, type PermissionMap } from '@fms/core';
 import { requireAuth } from '../middleware/auth';
 import { logAudit } from '../audit';
 import type { Variables } from '../types';
@@ -12,7 +12,13 @@ export const rolesRoutes = new Hono<{ Variables: Variables }>();
 rolesRoutes.get('/', requireAuth('roles.view'), async (c) => {
   const db = c.get('db');
   const rows = await db.select().from(roles).where(eq(roles.isDeleted, false));
-  return c.json(ok(rows.map((r) => ({ roleId: r.roleId, roleName: r.roleName, permissions: r.permissions, status: r.status }))));
+  // Same override as requireAuth/login — SUPER_ADMIN always shows every current permission
+  // checked here too, or this page would look broken (checkboxes disabled, yet not all checked)
+  // every time a new permission is added.
+  return c.json(ok(rows.map((r) => ({
+    roleId: r.roleId, roleName: r.roleName, status: r.status,
+    permissions: r.roleId === 'SUPER_ADMIN' ? ROLE_SEED.SUPER_ADMIN : r.permissions,
+  }))));
 });
 
 rolesRoutes.patch('/:roleId', requireAuth(), async (c) => {

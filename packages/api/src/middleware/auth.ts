@@ -2,6 +2,7 @@ import type { Context, Next } from 'hono';
 import { eq, and } from 'drizzle-orm';
 import { sessions, users, roles } from '@fms/db';
 import type { Permission, PermissionMap } from '@fms/core';
+import { ROLE_SEED } from '@fms/core';
 import { sha256Hex } from '../crypto';
 import { AppError } from '../errors';
 import { withDbRetry } from '../retry';
@@ -37,7 +38,13 @@ export function requireAuth(permission?: Permission) {
       .where(and(eq(roles.roleId, user.roleId), eq(roles.isDeleted, false))).limit(1);
     if (!role) throw new AppError('NO_ROLE', 'This account has no valid role assigned.');
 
-    const permissions = role.permissions as PermissionMap;
+    // SUPER_ADMIN always has every permission, by definition — computed fresh from the live
+    // PERMISSIONS list rather than trusting the role's stored JSONB, which is only as fresh as
+    // whenever that row was last saved. Without this, a permission added after this role was
+    // seeded (e.g. ai.chat) would silently be missing for every Super Admin until someone
+    // remembered to re-save the row — and the Roles page deliberately disables editing
+    // SUPER_ADMIN's checkboxes, so there's no UI path to fix it by hand either.
+    const permissions = role.roleId === 'SUPER_ADMIN' ? ROLE_SEED.SUPER_ADMIN : (role.permissions as PermissionMap);
     if (permission && !permissions[permission]) {
       throw new AppError('FORBIDDEN', 'You do not have permission to perform this action.');
     }
