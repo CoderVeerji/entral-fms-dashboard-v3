@@ -43,6 +43,10 @@ export function LiveRecordsPage() {
   const [freshness, setFreshness] = useState(navParams.freshness ?? '');
   const [stage, setStage] = useState(navParams.stage ?? '');
   const [doer, setDoer] = useState(navParams.doer ?? '');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [stageOptions, setStageOptions] = useState<string[]>([]);
+  const [doerOptions, setDoerOptions] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search);
   const [page, setPage] = useState(0);
@@ -57,23 +61,32 @@ export function LiveRecordsPage() {
     api.getFmsList(token).then((res) => { if (res.ok) setFmsList(res.data); });
   }, [token]);
 
+  // Re-scoped to the selected FMS — a stage/doer picked for one FMS rarely means anything for
+  // another, and a global list across every connected FMS would get long and mostly irrelevant.
+  useEffect(() => {
+    if (!token) return;
+    api.getRecordFilterOptions(token, fmsId || undefined).then((res) => {
+      if (res.ok) { setStageOptions(res.data.stages); setDoerOptions(res.data.doers); }
+    });
+  }, [token, fmsId]);
+
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     setError(null);
     const res = await api.getRecords(token, {
       fmsId: fmsId || undefined, status: status || undefined, freshness: freshness || undefined,
-      stage: stage || undefined, doer: doer || undefined,
+      stage: stage || undefined, doer: doer || undefined, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined,
       search: debouncedSearch || undefined, start: page * PAGE_SIZE, length: PAGE_SIZE,
     });
     setLoading(false);
     if (!res.ok) { setError(res.message); return; }
     setRows(res.data.records);
     setTotal(res.data.total);
-  }, [token, fmsId, status, freshness, stage, doer, debouncedSearch, page]);
+  }, [token, fmsId, status, freshness, stage, doer, dateFrom, dateTo, debouncedSearch, page]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setPage(0); }, [fmsId, status, freshness, stage, doer, debouncedSearch]);
+  useEffect(() => { setPage(0); }, [fmsId, status, freshness, stage, doer, dateFrom, dateTo, debouncedSearch]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -106,20 +119,26 @@ export function LiveRecordsPage() {
           <option value="">Any Freshness</option>
           {FRESHNESS_OPTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
         </select>
+        <select value={stage} onChange={(e) => setStage(e.target.value)}>
+          <option value="">Any Stage</option>
+          {stageOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select value={doer} onChange={(e) => setDoer(e.target.value)}>
+          <option value="">Any Doer</option>
+          {doerOptions.map((d) => <option key={d} value={d}>{d}</option>)}
+        </select>
+        <label className="filter-date-label">
+          From
+          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+        </label>
+        <label className="filter-date-label">
+          To
+          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+        </label>
         <button className="btn btn-outline btn-sm no-print" disabled={rows.length === 0} onClick={exportRows}>
           <i className="fas fa-file-csv" /> Export Page CSV
         </button>
       </div>
-
-      {(stage || doer) && (
-        // No dropdown for these two — they only ever arrive via a drill-down click from another
-        // page (Bottleneck Analysis's per-stage/per-doer counts), so this chip is the only way to
-        // see the filter is active and clear it.
-        <div className="filter-chip-bar">
-          {stage && <span className="filter-chip">Stage: {stage} <i className="fas fa-xmark" onClick={() => setStage('')} /></span>}
-          {doer && <span className="filter-chip">Doer: {doer} <i className="fas fa-xmark" onClick={() => setDoer('')} /></span>}
-        </div>
-      )}
 
       {error && <div className="login-error">{error}</div>}
 

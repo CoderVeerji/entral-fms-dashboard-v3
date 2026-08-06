@@ -161,6 +161,8 @@ export interface RecordsQuery {
   freshness?: string;
   doer?: string;
   search?: string;
+  dateFrom?: string;
+  dateTo?: string;
   start?: number;
   length?: number;
 }
@@ -173,6 +175,13 @@ export function getRecords(token: string, query: RecordsQuery) {
   return request<{ records: RecordRow[]; total: number; start: number; length: number }>(
     `/api/records?${params.toString()}`, {}, token,
   );
+}
+
+// Populates Live Records' Stage/Doer filter dropdowns with real, currently-existing values.
+export function getRecordFilterOptions(token: string, fmsId?: string) {
+  const params = new URLSearchParams();
+  if (fmsId) params.set('fmsId', fmsId);
+  return request<{ stages: string[]; doers: string[] }>(`/api/records/filter-options?${params.toString()}`, {}, token);
 }
 
 export interface StageEvent {

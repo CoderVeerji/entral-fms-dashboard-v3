@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, asc, desc, eq, getTableColumns, gte, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, getTableColumns, gte, isNotNull, lte, sql } from 'drizzle-orm';
 import { records, stageEvents, actionItems } from '@fms/db';
 import { ok, AppError } from '@fms/core';
 import { requireAuth } from '../middleware/auth';
@@ -61,6 +61,25 @@ recordsRoutes.get('/', requireAuth('records.view'), async (c) => {
   const rows = rowsWithTotal.map(({ totalCount: _totalCount, ...rest }) => rest);
 
   return c.json(ok({ records: rows, total, start, length }));
+});
+
+// Powers Live Records' Stage/Doer filter dropdowns — real distinct values instead of a free-text
+// box the user has to type an exact, case-sensitive match into. Scoped to the selected FMS (or
+// all, if none) so the dropdown only ever offers options that actually exist right now.
+recordsRoutes.get('/filter-options', requireAuth('records.view'), async (c) => {
+  const db = c.get('db');
+  const q = c.req.query();
+  const conditions = [eq(records.isArchived, false)];
+  if (q.fmsId) conditions.push(eq(records.fmsId, q.fmsId));
+
+  const stageRows = await db.selectDistinct({ value: records.currentStage }).from(records)
+    .where(and(...conditions, isNotNull(records.currentStage)));
+  const doerRows = await db.selectDistinct({ value: records.doer }).from(records)
+    .where(and(...conditions, isNotNull(records.doer)));
+
+  const stages = stageRows.map((r) => r.value).filter((v): v is string => !!v).sort();
+  const doers = doerRows.map((r) => r.value).filter((v): v is string => !!v).sort();
+  return c.json(ok({ stages, doers }));
 });
 
 recordsRoutes.get('/:fmsId/:recordId', requireAuth('records.view'), async (c) => {
