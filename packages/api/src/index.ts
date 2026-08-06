@@ -20,6 +20,7 @@ import { syncLogRoutes } from './routes/syncLog';
 import { dashboardRoutes } from './routes/dashboard';
 import { syncRoutes } from './routes/sync';
 import { dataHealthRoutes } from './routes/dataHealth';
+import { aiRoutes } from './routes/ai';
 import type { Env } from './env';
 import type { Variables } from './types';
 
@@ -61,6 +62,7 @@ app.route('/api/sync-log', syncLogRoutes);
 app.route('/api/dashboard', dashboardRoutes);
 app.route('/api/sync', syncRoutes);
 app.route('/api/data-health', dataHealthRoutes);
+app.route('/api/ai', aiRoutes);
 
 // Cron Trigger (wrangler.toml, every 4 min) — see that file's comment for why: keeps Neon's
 // free-tier compute from suspending so it isn't the *user's* request that pays the cold-start

@@ -18,4 +18,8 @@ export interface Env {
   GMAIL_SENDER_EMAIL?: string;
   // Public web app URL, used only for the "Open Dashboard" link in reset emails.
   APP_URL?: string;
+  // Google AI Studio API key (free tier, no card) — powers the AI Assistant chat and the
+  // scheduled digest/check-in emails. Absent = /api/ai/chat returns AI_NOT_CONFIGURED; the rest
+  // of the app is unaffected.
+  GEMINI_API_KEY?: string;
 }

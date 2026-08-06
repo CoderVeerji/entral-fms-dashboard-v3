@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { AppShell } from './components/AppShell';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { DashboardPage } from './pages/DashboardPage';
+import { AiAssistantPage } from './pages/AiAssistantPage';
 import { LiveRecordsPage } from './pages/LiveRecordsPage';
 import { UpdateHealthPage } from './pages/UpdateHealthPage';
 import { BottleneckPage } from './pages/BottleneckPage';
@@ -30,7 +31,8 @@ export function AuthenticatedApp() {
           the next one visited — same "one broken page can't white-screen the whole app" pattern
           as app/index.html's per-route ErrorBoundary. */}
       <ErrorBoundary key={route}>
-        {route === 'liveRecords' ? <LiveRecordsPage />
+        {route === 'aiAssistant' ? <AiAssistantPage />
+          : route === 'liveRecords' ? <LiveRecordsPage />
           : route === 'updateHealth' ? <UpdateHealthPage />
           : route === 'bottlenecks' ? <BottleneckPage />
           : route === 'misReport' ? <MisReportPage />

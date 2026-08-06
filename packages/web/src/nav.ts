@@ -15,6 +15,7 @@ export interface NavGroup {
 export const NAV_GROUPS: NavGroup[] = [
   { label: 'Overview', items: [
     { key: 'dashboard', label: 'Management Dashboard', icon: 'fa-gauge-high', perm: 'dashboard.view' },
+    { key: 'aiAssistant', label: 'AI Assistant', icon: 'fa-robot', perm: 'ai.chat' },
   ] },
   { label: 'Tracking', items: [
     { key: 'liveRecords', label: 'Live Records', icon: 'fa-table-list', perm: 'records.view' },
@@ -41,6 +42,7 @@ export const NAV_GROUPS: NavGroup[] = [
 
 export const PAGE_TITLES: Record<string, [string, string]> = {
   dashboard: ['Management Dashboard', 'Live overview across every connected FMS'],
+  aiAssistant: ['AI Assistant', 'Ask anything about your connected FMS, in plain language'],
   liveRecords: ['Live Records', 'Universal record tracking across all FMS'],
   updateHealth: ['Update Health', 'Which records have gone quiet, and for how long'],
   bottlenecks: ['Bottleneck Analysis', 'Which stages and doers are driving delays'],

@@ -38,7 +38,7 @@ export const PERMISSIONS = [
   'dashboard.view', 'fms.view', 'fms.manage', 'records.view', 'actions.view', 'actions.add', 'actions.edit',
   'actions.close', 'actions.delete', 'reports.view', 'reports.export', 'users.view', 'users.add',
   'users.edit', 'users.delete', 'roles.view', 'roles.edit', 'settings.view', 'settings.edit', 'audit.view',
-  'sync.run',
+  'sync.run', 'ai.chat',
 ] as const;
 
 export type Permission = typeof PERMISSIONS[number];
