@@ -13,7 +13,10 @@ interface HelpApi {
   lang: HelpLang;
   setLang: (l: HelpLang) => void;
   active: HelpExplanation | null;
-  show: (exp: HelpExplanation) => void;
+  // Bounding rect of the "?" badge that was clicked, captured at click time — lets HelpPanel open
+  // anchored right next to it instead of always in a fixed screen corner.
+  anchorRect: DOMRect | null;
+  show: (exp: HelpExplanation, anchorRect: DOMRect) => void;
   hide: () => void;
 }
 
@@ -31,20 +34,22 @@ export function HelpProvider({ children }: { children: ReactNode }) {
   const [enabled, setEnabled] = useState(false);
   const [lang, setLangState] = useState<HelpLang>(() => (localStorage.getItem(LANG_KEY) === 'hi' ? 'hi' : 'en'));
   const [active, setActive] = useState<HelpExplanation | null>(null);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
 
   const toggle = useCallback(() => {
     setEnabled((e) => !e);
     setActive(null);
+    setAnchorRect(null);
   }, []);
   const setLang = useCallback((l: HelpLang) => {
     setLangState(l);
     localStorage.setItem(LANG_KEY, l);
   }, []);
-  const show = useCallback((exp: HelpExplanation) => setActive(exp), []);
-  const hide = useCallback(() => setActive(null), []);
+  const show = useCallback((exp: HelpExplanation, rect: DOMRect) => { setActive(exp); setAnchorRect(rect); }, []);
+  const hide = useCallback(() => { setActive(null); setAnchorRect(null); }, []);
 
   return (
-    <HelpContext.Provider value={{ enabled, toggle, lang, setLang, active, show, hide }}>
+    <HelpContext.Provider value={{ enabled, toggle, lang, setLang, active, anchorRect, show, hide }}>
       {children}
     </HelpContext.Provider>
   );

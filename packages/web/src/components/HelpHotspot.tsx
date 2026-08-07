@@ -23,7 +23,7 @@ export function HelpHotspot({ title, en, hi, inline }: HelpHotspotProps) {
     <button
       type="button"
       className={inline ? 'help-hotspot-badge help-hotspot-inline' : 'help-hotspot-badge'}
-      onClick={(e) => { e.stopPropagation(); e.preventDefault(); show({ title, en, hi }); }}
+      onClick={(e) => { e.stopPropagation(); e.preventDefault(); show({ title, en, hi }, e.currentTarget.getBoundingClientRect()); }}
       title="What is this?"
     >
       ?
