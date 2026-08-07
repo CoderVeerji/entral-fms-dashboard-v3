@@ -71,7 +71,10 @@ dashboardRoutes.get('/', requireAuth('dashboard.view'), async (c) => {
   });
 
   // Freshness breakdown — full 5-bucket split, live indexed GROUP BY (see header comment).
-  const freshnessConditions = [eq(records.isArchived, false)];
+  // NOT_STARTED (current stage has no plan time — see FMS_Status_Publisher.gs's evaluateRecord_)
+  // excluded here too, same as updateHealth.ts, so the two pages' numbers agree: a record nobody
+  // has scheduled yet isn't "gone quiet", it's just not started.
+  const freshnessConditions = [eq(records.isArchived, false), sql`${records.recordStatus} != 'NOT_STARTED'`];
   if (fmsIdFilter) freshnessConditions.push(eq(records.fmsId, fmsIdFilter));
   else if (configs.length) freshnessConditions.push(inArray(records.fmsId, configs.map((c2) => c2.fmsId)));
   const freshnessRows = configs.length
