@@ -14,7 +14,9 @@ Answer only using the tools provided — never guess or invent a number, FMS nam
 
 Describe performance in terms a non-technical reader immediately understands: on-time percentage (onTimePercent) and real counts (assigned, completed, late, overdue, stalled — e.g. "471 of 900 stages were late, 90% on time"). NEVER state a raw bottleneckScore number by itself (e.g. "score: 3985.7") — it's an internal ranking value with no intuitive scale and reads as made up; use it only to decide which rows are worth mentioning, never to describe them. Rank/compare using words ("the worst-performing stage") backed by the real counts, not the score number.
 
-Format answers in markdown: use a short bold summary line, a table (with a header row) whenever you're presenting more than two rows of comparable data (per-stage or per-doer breakdowns, several FMS side by side) — table columns should be percentages and counts, never a raw score column — and bullet points for recommendations. Keep tables narrow — only the columns that matter for the question asked.`;
+Format answers in markdown: use a short bold summary line, a table (with a header row) whenever you're presenting more than two rows of comparable data (per-stage or per-doer breakdowns, several FMS side by side) — table columns should be percentages and counts, never a raw score column — and bullet points for recommendations. Keep tables narrow — only the columns that matter for the question asked.
+
+If answering needs more than one tool, request all of them together in the same turn rather than one at a time — each extra round trip costs real time against a tight rate limit.`;
 
 // Bounds how many times the model can call a tool before answering — a runaway loop would burn
 // through Gemini's free-tier daily quota fast (see plan §"M7"), so this fails loud instead.
@@ -60,7 +62,7 @@ aiRoutes.post('/chat', requireAuth('ai.chat'), async (c) => {
     // on. 429 is expected occasional behavior here, not a bug: real-world testing found this
     // free-tier key's actual limit is 5 requests/minute, and one question can cost several calls.
     if (err instanceof GeminiError && err.status === 429) {
-      throw new AppError('AI_RATE_LIMITED', 'The AI Assistant is getting a lot of questions right now — wait about 20 seconds and try again.');
+      throw new AppError('AI_RATE_LIMITED', 'The AI Assistant is on a free plan limited to a few questions per minute — please wait about a minute before trying again.');
     }
     throw new AppError('AI_ERROR', 'The AI Assistant had trouble answering that — please try again.');
   }
@@ -73,13 +75,18 @@ aiRoutes.post('/chat', requireAuth('ai.chat'), async (c) => {
 });
 
 // One retry, after Gemini's own suggested wait (capped) — matches REBUILD_PLAN's "no retry
-// storms" principle: a single bounded retry for a transient rate limit, not a loop.
+// storms" principle: a single bounded retry for a transient rate limit, not a loop. Real-world
+// testing found this key's free-tier limit (5 requests/minute) tight enough that even a fresh
+// manual retry ~20s later can still 429 — the fix that actually matters more than a longer/more
+// aggressive retry here is using fewer Gemini calls per question in the first place (see the
+// system prompt's "request tools together" instruction above), since each question already costs
+// at least 2 calls (decide → answer) before any retry.
 async function callGeminiWithRetry(apiKey: string, params: Parameters<typeof callGemini>[1]) {
   try {
     return await callGemini(apiKey, params);
   } catch (err) {
     if (err instanceof GeminiError && err.status === 429) {
-      const waitSeconds = Math.min(err.retryAfterSeconds ?? 5, 20);
+      const waitSeconds = Math.min(err.retryAfterSeconds ?? 10, 25);
       await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
       return await callGemini(apiKey, params);
     }
