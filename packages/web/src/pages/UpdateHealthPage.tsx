@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useNavigation } from '../context/NavigationContext';
 import * as api from '../api';
 import type { FmsConfig, UpdateHealthRow, UpdateHealthCards } from '../api';
 import { KpiCard } from '../components/KpiCard';
@@ -19,9 +20,13 @@ function hoursSince(iso: string | null): number | null {
 
 export function UpdateHealthPage() {
   const { token } = useAuth();
+  // Seeds filters from a cross-page jump (e.g. Dashboard's "Stale" card) via useNavigation().params
+  // — same pattern as LiveRecordsPage — read once on mount only, so the user's own subsequent
+  // filter changes here are never silently overwritten.
+  const { params: navParams } = useNavigation();
   const [fmsList, setFmsList] = useState<FmsConfig[]>([]);
-  const [fmsId, setFmsId] = useState('');
-  const [freshness, setFreshness] = useState('');
+  const [fmsId, setFmsId] = useState(navParams.fmsId ?? '');
+  const [freshness, setFreshness] = useState(navParams.freshness ?? '');
   const [todayOnly, setTodayOnly] = useState(false);
   const [page, setPage] = useState(0);
   const [rows, setRows] = useState<UpdateHealthRow[]>([]);
