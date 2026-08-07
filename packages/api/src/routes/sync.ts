@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { ok, AppError } from '@fms/core';
 import { requireAuth } from '../middleware/auth';
 import { logAudit } from '../audit';
+import { dispatchGithubSync } from '../githubSync';
 import type { Env } from '../env';
 import type { Variables } from '../types';
 
@@ -14,28 +15,16 @@ import type { Variables } from '../types';
 // endpoint returns as soon as GitHub accepts the dispatch, not when the sync itself completes.
 export const syncRoutes = new Hono<{ Bindings: Env; Variables: Variables }>();
 
-const GITHUB_REPO = 'CoderVeerji/entral-fms-dashboard-v3';
-
 syncRoutes.post('/trigger', requireAuth('sync.run'), async (c) => {
   const db = c.get('db');
   const session = c.get('session');
   const githubToken = c.env.GITHUB_TOKEN;
   if (!githubToken) throw new AppError('SYNC_NOT_CONFIGURED', 'GITHUB_TOKEN is not set — Sync Now is unavailable until it is.');
 
-  const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/actions/workflows/sync.yml/dispatches`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${githubToken}`,
-      Accept: 'application/vnd.github+json',
-      'User-Agent': 'central-fms-dashboard-v3',
-    },
-    body: JSON.stringify({ ref: 'main' }),
-  });
-
-  if (res.status !== 204) {
-    const body = await res.text();
-    await logAudit(db, { username: session.username, role: session.roleId, action: 'SYNC_TRIGGER', module: 'sync', success: false, errorMessage: `HTTP ${res.status}` });
-    throw new AppError('SYNC_TRIGGER_FAILED', `GitHub declined the sync trigger (HTTP ${res.status}): ${body.slice(0, 300)}`);
+  const result = await dispatchGithubSync(githubToken);
+  if (!result.ok) {
+    await logAudit(db, { username: session.username, role: session.roleId, action: 'SYNC_TRIGGER', module: 'sync', success: false, errorMessage: `HTTP ${result.status}` });
+    throw new AppError('SYNC_TRIGGER_FAILED', `GitHub declined the sync trigger (HTTP ${result.status}): ${result.body}`);
   }
 
   await logAudit(db, { username: session.username, role: session.roleId, action: 'SYNC_TRIGGER', module: 'sync' });

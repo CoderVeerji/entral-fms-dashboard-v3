@@ -11,8 +11,13 @@ compatibility_flags = ["nodejs_compat"]
 [observability]
 enabled = true
 
-# Keeps Neon's free-tier compute from auto-suspending (every 4 min, under its ~5 min idle
-# threshold) so real user requests don't pay the multi-second/occasional-error cold-start cost —
-# see src/index.ts's scheduled() handler and plan §"Known risks with the free/no-card constraint".
+# Two crons, both handled by src/index.ts's single scheduled() export (branches on event.cron):
+#   */4 * * * *  — keeps Neon's free-tier compute from auto-suspending (under its ~5 min idle
+#                  threshold) so real user requests don't pay the cold-start cost.
+#   */5 * * * *  — fires the same GitHub workflow_dispatch call "Sync Now" makes, on Cloudflare's
+#                  reliable schedule instead of relying on GitHub's own best-effort `schedule:`
+#                  trigger (observed running 1-3 hours late instead of every 5 min — see plan
+#                  §"M7" follow-up). The actual sync logic stays in GitHub Actions; this is only
+#                  the dispatch call.
 [triggers]
-crons = ["*/4 * * * *"]
+crons = ["*/4 * * * *", "*/5 * * * *"]
