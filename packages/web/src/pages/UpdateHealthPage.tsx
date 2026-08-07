@@ -8,6 +8,7 @@ import { RecordDrawer } from '../components/RecordDrawer';
 import { EmptyState } from '../components/EmptyState';
 import { SkeletonBlock } from '../components/SkeletonBlock';
 import { formatDateTime } from '../utils/date';
+import { HelpHotspot } from '../components/HelpHotspot';
 
 const PAGE_SIZE = 25;
 
@@ -63,23 +64,33 @@ export function UpdateHealthPage() {
     <div className="update-health-page">
       {cards && (
         <div className="grid grid-cols-5" style={{ marginBottom: 22 }}>
-          <KpiCard icon="fa-check" color="green" value={cards.updatedToday} label="Updated Today" />
-          <div onClick={() => toggleFreshness('Warning')} style={{ cursor: 'pointer' }}>
+          <div style={{ position: 'relative' }}>
+            <KpiCard icon="fa-check" color="green" value={cards.updatedToday} label="Updated Today" />
+            <HelpHotspot title="Updated Today" en="Records that had some activity (a stage plan or actual filled in) today." hi="Records jinme aaj kuch activity hui hai (stage ka plan ya actual bhara gaya)." />
+          </div>
+          <div onClick={() => toggleFreshness('Warning')} style={{ cursor: 'pointer', position: 'relative' }}>
             <KpiCard icon="fa-triangle-exclamation" color="amber" value={cards.warning} label="Warning" />
+            <HelpHotspot title="Warning" en="No update for a little while — not urgent yet, but worth keeping an eye on." hi="Kuch time se koi update nahi aaya — abhi urgent nahi, par nazar rakho." />
           </div>
-          <div onClick={() => toggleFreshness('Stale')} style={{ cursor: 'pointer' }}>
+          <div onClick={() => toggleFreshness('Stale')} style={{ cursor: 'pointer', position: 'relative' }}>
             <KpiCard icon="fa-hourglass-half" color="red" value={cards.stale} label="Stale" />
+            <HelpHotspot title="Stale" en="No update for several days — someone should check on this record." hi="Kai dino se koi update nahi — kisi ko ye record check karna chahiye." />
           </div>
-          <div onClick={() => toggleFreshness('Critical')} style={{ cursor: 'pointer' }}>
+          <div onClick={() => toggleFreshness('Critical')} style={{ cursor: 'pointer', position: 'relative' }}>
             <KpiCard icon="fa-fire" color="red" value={cards.critical} label="Critical" />
+            <HelpHotspot title="Critical" en="No update in a long time — the most neglected records, regardless of whether they have a deadline." hi="Bahut lambe time se koi update nahi — sabse zyada neglect hue records, chahe deadline ho ya na ho." />
           </div>
-          <div onClick={() => toggleFreshness('Never')} style={{ cursor: 'pointer' }}>
+          <div onClick={() => toggleFreshness('Never')} style={{ cursor: 'pointer', position: 'relative' }}>
             <KpiCard icon="fa-ban" color="grey" value={cards.neverUpdated} label="Never Updated" />
+            <HelpHotspot title="Never Updated" en="No activity has ever been recorded for these — not even the first step." hi="Inpe kabhi koi activity record hi nahi hui — pehla step bhi nahi." />
           </div>
         </div>
       )}
 
       <div className="filter-bar">
+        <HelpHotspot inline title="Update Health"
+          en="Which records have gone quiet, and for how long — sorted by freshness (activity), not deadlines. Use this to find records everyone has forgotten about, even ones that technically aren't overdue."
+          hi="Kaunse records chup ho gaye hain, aur kab se — freshness (activity) ke hisab se sorted hai, deadline se nahi. Isse wo records milte hain jinhe sab bhool gaye, chahe wo technically overdue na ho." />
         <select value={fmsId} onChange={(e) => setFmsId(e.target.value)}>
           <option value="">All FMS</option>
           {fmsList.map((f) => <option key={f.fmsId} value={f.fmsId}>{f.fmsName}</option>)}

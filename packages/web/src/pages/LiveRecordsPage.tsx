@@ -10,6 +10,7 @@ import { SkeletonBlock } from '../components/SkeletonBlock';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { exportCsv } from '../utils/csv';
 import { formatDateTime } from '../utils/date';
+import { HelpHotspot } from '../components/HelpHotspot';
 
 const PAGE_SIZE = 25;
 
@@ -107,6 +108,9 @@ export function LiveRecordsPage() {
           type="text" placeholder="Search name, ID, doer..." value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+        <HelpHotspot inline title="Live Records"
+          en="Every record from every connected FMS, in one searchable list — filter by FMS, status, freshness, stage, doer, or a date range. Click any row to see that record's full history and details."
+          hi="Saari connected FMS ke saare records, ek hi jagah — FMS, status, freshness, stage, doer, ya date range se filter kar sakte ho. Kisi bhi row pe click karke poori history aur details dekh sakte ho." />
         <select value={fmsId} onChange={(e) => setFmsId(e.target.value)}>
           <option value="">All FMS</option>
           {fmsList.map((f) => <option key={f.fmsId} value={f.fmsId}>{f.fmsName}</option>)}
@@ -151,8 +155,24 @@ export function LiveRecordsPage() {
           <table className="records-table">
             <thead>
               <tr>
-                <th>Record</th><th>FMS</th><th>Stage</th><th>Doer</th><th>Status</th>
-                <th>Freshness</th><th>Plan Time</th><th>Delay</th><th></th>
+                <th>Record</th><th>FMS</th><th>Stage</th><th>Doer</th>
+                <th>Status
+                  <HelpHotspot inline title="Status"
+                    en="Where this record's CURRENT step stands — Running On Time, At Risk, Overdue, Stalled, or fully Completed."
+                    hi="Is record ke CURRENT step ka status — Running On Time, At Risk, Overdue, Stalled, ya poora Completed." />
+                </th>
+                <th>Freshness
+                  <HelpHotspot inline title="Freshness"
+                    en="How recently this record was last touched — separate from Status. A record can be on-time but still 'Stale' if nobody has updated it in a few days."
+                    hi="Ye record last kab touch hua tha — Status se alag hai. Record on-time ho sakta hai par phir bhi 'Stale' dikh sakta hai agar kai dinon se update nahi aaya." />
+                </th>
+                <th>Plan Time</th>
+                <th>Delay
+                  <HelpHotspot inline title="Delay"
+                    en="How far past the deadline this record's current step is — only shown for Overdue records."
+                    hi="Is record ke current step ki deadline kitni nikal chuki hai — sirf Overdue records ke liye dikhta hai." />
+                </th>
+                <th></th>
               </tr>
             </thead>
             <tbody>

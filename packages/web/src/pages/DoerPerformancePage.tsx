@@ -6,6 +6,7 @@ import { EmptyState } from '../components/EmptyState';
 import { SkeletonBlock } from '../components/SkeletonBlock';
 import { Leaderboard } from '../components/Leaderboard';
 import { BucketDetailPanel, type DrillTarget } from './BottleneckPage';
+import { HelpHotspot } from '../components/HelpHotspot';
 
 const COMPLETED_STATUSES = 'COMPLETED_ON_TIME,COMPLETED_LATE,COMPLETED_EARLY,UNPLANNED_COMPLETED';
 const ON_TIME_STATUSES = 'COMPLETED_ON_TIME,COMPLETED_EARLY';
@@ -63,6 +64,9 @@ export function DoerPerformancePage() {
           <option value="">All FMS</option>
           {fmsList.map((f) => <option key={f.fmsId} value={f.fmsId}>{f.fmsName}</option>)}
         </select>
+        <HelpHotspot inline title="Doer Performance"
+          en="Every person's work rolled up across every FMS they touch. The Leaderboard ranks by raw output (stages completed); the table below ranks by quality (the Score column). Click any count to see the exact stage events."
+          hi="Har vyakti ka kaam, wo jitni bhi FMS mein kaam karta hai un sabko milakar. Leaderboard raw output (kitne stages complete kiye) se rank karta hai; neeche wali table quality (Score column) se. Kisi bhi count pe click karke exact stage events dekh sakte ho." />
       </div>
 
       {error && <div className="login-error">{error}</div>}
@@ -84,8 +88,17 @@ export function DoerPerformancePage() {
             <table className="records-table">
               <thead>
                 <tr>
-                  <th>Doer</th><th>FMS Count</th><th>Assigned</th><th>Completed</th><th>On Time</th>
-                  <th>Late</th><th>Overdue</th><th>Stalled</th><th>Avg Delay</th><th>Open Actions</th><th>Score</th>
+                  <th>Doer</th>
+                  <th>FMS Count
+                    <HelpHotspot inline title="FMS Count" en="How many different connected FMS this person does work in." hi="Ye vyakti kitni alag-alag connected FMS mein kaam karta hai." />
+                  </th>
+                  <th>Assigned</th><th>Completed</th><th>On Time</th>
+                  <th>Late</th><th>Overdue</th><th>Stalled</th><th>Avg Delay</th><th>Open Actions</th>
+                  <th>Score
+                    <HelpHotspot inline title="Score"
+                      en="A 0-100 quality score combining on-time rate, how much of their pending work is overdue/stalled, and how fresh their records are — a real, comparable number (unlike Bottleneck Analysis's ranking-only score)."
+                      hi="Ek 0-100 quality score jo on-time rate, kitna pending kaam overdue/stalled hai, aur records kitne fresh hain — sab milakar banta hai. Ye ek real, comparable number hai (Bottleneck Analysis wale ranking-only score se alag)." />
+                  </th>
                 </tr>
               </thead>
               <tbody>

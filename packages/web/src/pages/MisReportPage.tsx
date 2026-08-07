@@ -5,6 +5,7 @@ import type { FmsConfig, MisReport, MisStageBreakdown, MisFmsBreakdown } from '.
 import { KpiCard } from '../components/KpiCard';
 import { exportCsv } from '../utils/csv';
 import { BucketDetailPanel, type DrillTarget } from './BottleneckPage';
+import { HelpHotspot } from '../components/HelpHotspot';
 
 const COMPLETED_STATUSES = 'COMPLETED_ON_TIME,COMPLETED_LATE,COMPLETED_EARLY,UNPLANNED_COMPLETED';
 const ON_TIME_STATUSES = 'COMPLETED_ON_TIME,COMPLETED_EARLY';
@@ -99,7 +100,13 @@ export function MisReportPage() {
         <div className="table-scroll" style={{ marginBottom: 22 }}>
           <table className="records-table">
             <thead>
-              <tr><th>{title === 'By Stage' ? 'Stage' : 'Doer'}</th><th>Completed</th><th>On Time</th><th>Late</th><th>Score</th></tr>
+              <tr><th>{title === 'By Stage' ? 'Stage' : 'Doer'}</th><th>Completed</th><th>On Time</th><th>Late</th>
+                <th>Score
+                  <HelpHotspot inline title="Score"
+                    en="On-time percentage for this stage/doer during this period — same Positive/Minus display as above. Click Completed/On Time/Late to see the exact stage events."
+                    hi="Is stage/doer ka on-time percentage is period ke liye — upar wale jaisa hi Positive/Minus display. Completed/On Time/Late pe click karke exact stage events dekh sakte ho." />
+                </th>
+              </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
@@ -144,13 +151,16 @@ export function MisReportPage() {
         ) : (
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         )}
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           <button className={'btn btn-sm ' + (scoreMode === 'positive' ? 'btn-primary' : 'btn-outline')} onClick={() => setScoreMode('positive')} title="Show as achievement % (e.g. 90%)">
             Positive
           </button>
           <button className={'btn btn-sm ' + (scoreMode === 'minus' ? 'btn-danger' : 'btn-outline')} onClick={() => setScoreMode('minus')} title="Show as delay penalty (e.g. -10%)">
             Minus (Delay Penalty)
           </button>
+          <HelpHotspot inline title="Positive / Minus"
+            en="Two ways to show the same on-time percentage. Positive: '90%' (achievement framing). Minus: '-10%' (what's missing from 100%, delay-penalty framing). Same underlying number, just two ways of reading it."
+            hi="Ek hi on-time percentage ko dikhane ke do tareeke. Positive: '90%' (achievement wala). Minus: '-10%' (100 mein se kya kam hai, delay-penalty wala). Number ek hi hai, bas padhne ka tareeka alag." />
         </div>
         <div className="no-print" style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
           <button className="btn btn-outline btn-sm" disabled={!report} onClick={exportReport}><i className="fas fa-file-csv" /> Export CSV</button>
@@ -165,11 +175,26 @@ export function MisReportPage() {
         <>
           <div className="section-title"><i className="fas fa-calendar-days" />{report.periodLabel}</div>
           <div className="grid grid-cols-5" style={{ marginBottom: 22 }}>
-            <KpiCard icon="fa-file-circle-plus" color="blue" value={report.metrics.newRecords} label="New Records" />
-            <KpiCard icon="fa-circle-check" color="green" value={report.metrics.completed} label="Stages Completed" />
-            <KpiCard icon="fa-clock" color="amber" value={report.metrics.completedLate} label="Completed Late" />
-            <KpiCard icon="fa-hourglass-half" color="red" value={report.metrics.overdueAtEnd} label="Overdue / Stalled Now" />
-            <KpiCard icon="fa-layer-group" color="grey" value={report.metrics.closingPending} label="Still Pending" />
+            <div style={{ position: 'relative' }}>
+              <KpiCard icon="fa-file-circle-plus" color="blue" value={report.metrics.newRecords} label="New Records" />
+              <HelpHotspot title="New Records" en="Records that started during this period." hi="Records jo is period ke andar shuru hue." />
+            </div>
+            <div style={{ position: 'relative' }}>
+              <KpiCard icon="fa-circle-check" color="green" value={report.metrics.completed} label="Stages Completed" />
+              <HelpHotspot title="Stages Completed" en="How many individual stage-steps (across all records) were finished during this period — one record can contribute several." hi="Is period mein kitne stage-steps complete hue (saare records milakar) — ek record ke kai steps ho sakte hain." />
+            </div>
+            <div style={{ position: 'relative' }}>
+              <KpiCard icon="fa-clock" color="amber" value={report.metrics.completedLate} label="Completed Late" />
+              <HelpHotspot title="Completed Late" en="Of those completed stages, how many finished after their deadline." hi="Un complete hue steps mein se, kitne deadline nikalne ke baad complete hue." />
+            </div>
+            <div style={{ position: 'relative' }}>
+              <KpiCard icon="fa-hourglass-half" color="red" value={report.metrics.overdueAtEnd} label="Overdue / Stalled Now" />
+              <HelpHotspot title="Overdue / Stalled Now" en="Records that are currently overdue or stalled, as of right now — not date-limited to this report's period, this is the live count." hi="Records jo abhi is waqt overdue ya stalled hain — ye report ke period tak limited nahi, ye live count hai." />
+            </div>
+            <div style={{ position: 'relative' }}>
+              <KpiCard icon="fa-layer-group" color="grey" value={report.metrics.closingPending} label="Still Pending" />
+              <HelpHotspot title="Still Pending" en="Records not yet finished, as of right now." hi="Records jo abhi tak complete nahi hue." />
+            </div>
           </div>
 
           <div className="grid grid-cols-2" style={{ marginBottom: 22, gap: 14 }}>
@@ -193,7 +218,13 @@ export function MisReportPage() {
           <div className="table-scroll" style={{ marginBottom: 22 }}>
             <table className="records-table">
               <thead>
-                <tr><th>FMS</th><th>New</th><th>Completed</th><th>On Time</th><th>Late</th><th>Pending</th><th>Overdue</th><th>Score</th></tr>
+                <tr><th>FMS</th><th>New</th><th>Completed</th><th>On Time</th><th>Late</th><th>Pending</th><th>Overdue</th>
+                  <th>Score
+                    <HelpHotspot inline title="Score"
+                      en="The on-time percentage for this FMS during this period, shown as Positive (%) or Minus (-%) depending on the toggle above."
+                      hi="Is FMS ka on-time percentage is period ke liye, upar wale toggle ke hisab se Positive (%) ya Minus (-%) mein dikhta hai." />
+                  </th>
+                </tr>
               </thead>
               <tbody>
                 {report.fmsBreakdown.map((f: MisFmsBreakdown) => (

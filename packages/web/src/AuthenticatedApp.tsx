@@ -19,6 +19,7 @@ import { AboutPage } from './pages/AboutPage';
 import { MyAccountPage } from './pages/MyAccountPage';
 import { useNavigation } from './context/NavigationContext';
 import { applyTheme, getStoredTheme, applyAccent, getStoredAccent } from './theme';
+import { HelpPanel } from './components/HelpPanel';
 
 export function AuthenticatedApp() {
   const { route, navigate } = useNavigation();
@@ -48,6 +49,7 @@ export function AuthenticatedApp() {
           : route === 'myAccount' ? <MyAccountPage />
           : <DashboardPage />}
       </ErrorBoundary>
+      <HelpPanel />
     </AppShell>
   );
 }

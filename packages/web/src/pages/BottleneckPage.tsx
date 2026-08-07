@@ -8,6 +8,7 @@ import { StatusBadge } from '../components/StatusBadge';
 import { SkeletonBlock } from '../components/SkeletonBlock';
 import { EmptyState } from '../components/EmptyState';
 import { formatDateTime } from '../utils/date';
+import { HelpHotspot } from '../components/HelpHotspot';
 
 function scoreColor(score: number): string {
   if (score >= 10) return 'red';
@@ -90,8 +91,33 @@ function BucketTable({ rows, keyLabel, onDrill }: {
       <table className="records-table">
         <thead>
           <tr>
-            <th>{keyLabel}</th><th>FMS</th><th>Assigned</th><th>Overdue</th><th>Stalled</th>
-            <th>Completed Late</th><th>On-Time %</th><th>Avg Delay</th><th>Score</th>
+            <th>{keyLabel}</th><th>FMS</th>
+            <th>Assigned
+              <HelpHotspot inline title="Assigned"
+                en="How many stage-slots this stage/doer has been given in total — every stage step counted once, whether done or not."
+                hi="Is stage/doer ko kitne stage-steps mile hain total mein — har step ek baar count hota hai, complete ho ya na ho." />
+            </th>
+            <th>Overdue
+              <HelpHotspot inline title="Overdue"
+                en="How many of those steps passed their deadline without being done."
+                hi="Un steps mein se kitno ki deadline nikal gayi bina complete hue." />
+            </th>
+            <th>Stalled
+              <HelpHotspot inline title="Stalled"
+                en="How many steps never had a deadline set at all, and have sat untouched a while."
+                hi="Kitne steps ka deadline kabhi tha hi nahi, aur kaafi time se koi update nahi aaya." />
+            </th>
+            <th>Completed Late
+              <HelpHotspot inline title="Completed Late"
+                en="How many steps got finished, but after their deadline had passed."
+                hi="Kitne steps complete hue, lekin deadline nikalne ke baad." />
+            </th>
+            <th>On-Time %</th><th>Avg Delay</th>
+            <th>Score
+              <HelpHotspot inline title="Score"
+                en="An internal ranking number (overdue×4 + stalled×4 + late×2 + delay-days + ...) used only to sort rows worst-first — it has no scale like a percentage, so don't read it as one. Use the real counts next to it instead."
+                hi="Ye ek internal ranking number hai (overdue×4 + stalled×4 + late×2 + delay-days + ...) sirf rows ko worst-first sort karne ke liye — iska koi percentage jaisa scale nahi hai, isko waise mat padho. Iske bagal wale asli counts dekho." />
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -169,9 +195,12 @@ export function BottleneckPage() {
         </select>
         <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
         <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-        <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
+        <div style={{ display: 'flex', gap: 4, marginLeft: 'auto', alignItems: 'center' }}>
           <button className={view === 'stage' ? 'tab-active' : ''} onClick={() => setView('stage')}>By Stage</button>
           <button className={view === 'doer' ? 'tab-active' : ''} onClick={() => setView('doer')}>By Doer</button>
+          <HelpHotspot inline title="Bottleneck Analysis"
+            en="Which stages or doers are causing the most delays. 'By Stage' groups every record's activity by which step it's at; 'By Doer' groups it by who's responsible. Click any count (Assigned/Overdue/Stalled/Completed Late) to see the exact records behind it."
+            hi="Konse stages ya doers sabse zyada delay ka kaaran ban rahe hain. 'By Stage' har record ki activity ko step ke hisab se group karta hai; 'By Doer' zimmedar vyakti ke hisab se. Kisi bhi count (Assigned/Overdue/Stalled/Completed Late) pe click karke exact records dekh sakte ho." />
         </div>
       </div>
 

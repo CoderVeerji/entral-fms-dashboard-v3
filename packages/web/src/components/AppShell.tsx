@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
+import { useHelp } from '../context/HelpContext';
 
 interface AppShellProps {
   route: string;
@@ -10,6 +11,7 @@ interface AppShellProps {
 
 export function AppShell({ route, onNavigate, children }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { enabled: helpEnabled, lang } = useHelp();
 
   function navigate(next: string) {
     onNavigate(next);
@@ -22,7 +24,15 @@ export function AppShell({ route, onNavigate, children }: AppShellProps) {
       {mobileOpen && <div className="mobile-backdrop" onClick={() => setMobileOpen(false)} />}
       <div className="main-col">
         <Topbar route={route} onToggleSidebar={() => setMobileOpen((o) => !o)} />
-        <div className="page-body">{children}</div>
+        <div className="page-body">
+          {helpEnabled && (
+            <div className="help-mode-banner">
+              <i className="fas fa-circle-question" />
+              {lang === 'hi' ? 'Help mode ON — jo bhi pulsing ? badge dikhe, uspe click karke samjho.' : 'Help mode is ON — click any pulsing ? badge to learn what it means.'}
+            </div>
+          )}
+          {children}
+        </div>
       </div>
     </div>
   );

@@ -104,6 +104,7 @@ button { font-family: inherit; cursor: pointer; }
   display: flex; align-items: center; justify-content: center; color: var(--text-soft);
 }
 .icon-btn:hover { color: var(--blue); border-color: var(--blue); }
+.icon-btn-active { color: var(--amber) !important; border-color: var(--amber) !important; background: var(--amber-bg) !important; }
 .user-chip { display: flex; align-items: center; gap: 10px; padding: 6px 12px 6px 6px; border-radius: 30px; border: 1.5px solid var(--border); }
 .user-chip .avatar {
   width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, var(--blue), var(--cyan));
@@ -454,4 +455,41 @@ tr.row-clickable:hover td.row-view-cell { color: var(--blue); }
 @media (max-width: 760px) {
   .ai-chat-page { height: calc(100vh - 56px - 90px); }
   .ai-msg { max-width: 88%; }
+}
+
+/* ---------- Help mode (context/HelpContext.tsx, components/HelpHotspot.tsx/HelpPanel.tsx) ---------- */
+.help-hotspot-badge {
+  width: 20px; height: 20px; border-radius: 50%; border: none; background: var(--amber);
+  color: #fff; font-size: 11px; font-weight: 800; line-height: 1; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; padding: 0;
+  box-shadow: 0 0 0 3px var(--surface), 0 2px 6px rgba(0,0,0,.25);
+  animation: help-pulse 1.6s ease-in-out infinite;
+}
+.help-hotspot-badge:not(.help-hotspot-inline) { position: absolute; top: -8px; right: -8px; z-index: 5; }
+.help-hotspot-inline { display: inline-flex; vertical-align: middle; margin-left: 6px; flex-shrink: 0; }
+@keyframes help-pulse { 0%, 100% { box-shadow: 0 0 0 3px var(--surface), 0 2px 6px rgba(0,0,0,.25); } 50% { box-shadow: 0 0 0 3px var(--surface), 0 0 0 6px rgba(245,166,35,.35), 0 2px 6px rgba(0,0,0,.25); } }
+
+.help-panel {
+  position: fixed; bottom: 20px; right: 20px; width: 320px; max-width: calc(100vw - 32px);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow-hover, var(--shadow));
+  padding: 16px; z-index: 1100; animation: help-panel-in .15s ease;
+}
+@keyframes help-panel-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.help-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.help-panel-title { font-weight: 800; font-size: 13.5px; color: var(--navy); }
+.help-panel-body { font-size: 13px; line-height: 1.55; color: var(--text); margin-bottom: 12px; }
+.help-lang-toggle { display: flex; gap: 6px; }
+.help-lang-toggle button {
+  flex: 1; padding: 6px 0; border-radius: 8px; border: 1.5px solid var(--border); background: var(--surface-alt);
+  color: var(--text-soft); font-size: 11.5px; font-weight: 700; cursor: pointer;
+}
+.help-lang-toggle button.active { border-color: var(--blue); color: var(--blue); background: var(--surface); }
+
+.help-mode-banner {
+  display: flex; align-items: center; gap: 8px; background: var(--amber-bg); color: #9a6100;
+  border-radius: 10px; padding: 8px 14px; font-size: 12.5px; font-weight: 700; margin-bottom: 16px;
+}
+.help-mode-banner i { flex-shrink: 0; }
+@media (max-width: 760px) {
+  .help-panel { left: 16px; right: 16px; width: auto; bottom: 16px; }
 }

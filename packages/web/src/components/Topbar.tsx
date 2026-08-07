@@ -5,6 +5,7 @@ import * as api from '../api';
 import { PAGE_TITLES } from '../nav';
 import { applyTheme, getStoredTheme } from '../theme';
 import { ChangePasswordScreen } from '../pages/ChangePasswordScreen';
+import { useHelp } from '../context/HelpContext';
 
 interface TopbarProps {
   route: string;
@@ -14,6 +15,7 @@ interface TopbarProps {
 export function Topbar({ route, onToggleSidebar }: TopbarProps) {
   const { user, token, logout } = useAuth();
   const { navigate } = useNavigation();
+  const { enabled: helpEnabled, toggle: toggleHelp } = useHelp();
   const [isDark, setIsDark] = useState(getStoredTheme() === 'dark');
   const [menuOpen, setMenuOpen] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -53,6 +55,12 @@ export function Topbar({ route, onToggleSidebar }: TopbarProps) {
         </button>
         <button className="icon-btn" onClick={toggleTheme} title={isDark ? 'Switch to Light theme' : 'Switch to Dark theme'}>
           <i className={'fas ' + (isDark ? 'fa-sun' : 'fa-moon')} />
+        </button>
+        <button
+          className={'icon-btn' + (helpEnabled ? ' icon-btn-active' : '')} onClick={toggleHelp}
+          title={helpEnabled ? 'Turn off Help mode' : 'Turn on Help mode — click the ? badges that appear to learn what things mean'}
+        >
+          <i className="fas fa-circle-question" />
         </button>
         <div className="user-chip" onClick={() => setMenuOpen((o) => !o)}>
           <div className="avatar">{(user?.fullName || user?.username || 'U').substring(0, 1).toUpperCase()}</div>

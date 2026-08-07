@@ -1,6 +1,7 @@
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { NavigationProvider } from './context/NavigationContext';
+import { HelpProvider } from './context/HelpContext';
 import { ConfirmProvider } from './components/ConfirmDialog';
 import { LoadingBar } from './components/LoadingBar';
 import { LoginPage } from './pages/LoginPage';
@@ -23,8 +24,10 @@ export default function App() {
       <ConfirmProvider>
         <AuthProvider>
           <NavigationProvider>
-            <LoadingBar />
-            <Root />
+            <HelpProvider>
+              <LoadingBar />
+              <Root />
+            </HelpProvider>
           </NavigationProvider>
         </AuthProvider>
       </ConfirmProvider>

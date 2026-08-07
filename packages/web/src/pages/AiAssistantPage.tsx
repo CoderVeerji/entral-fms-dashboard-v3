@@ -4,6 +4,7 @@ import { useToast } from '../context/ToastContext';
 import * as api from '../api';
 import type { AiChatTurn } from '../api';
 import { MarkdownView } from '../components/MarkdownView';
+import { HelpHotspot } from '../components/HelpHotspot';
 
 const SUGGESTIONS = [
   'Which FMS needs attention right now?',
@@ -81,6 +82,9 @@ export function AiAssistantPage() {
         <button className="btn btn-primary" disabled={sending || !input.trim()} onClick={() => send(input)}>
           <i className="fas fa-paper-plane" />
         </button>
+        <HelpHotspot inline title="AI Assistant"
+          en="Answers only from real, current dashboard data — it never guesses. It's on a free plan with a limited number of questions per minute, so if you see a rate-limit message, just wait a bit and ask again. Ask about which FMS needs attention, what's causing delays, or anyone's performance."
+          hi="Sirf asli, current dashboard data se jawab deta hai — kabhi guess nahi karta. Ye free plan pe hai jisme ek minute mein limited sawaal puchhe ja sakte hain, agar rate-limit ka message aaye to thoda ruk ke dobara pucho. Kaunsi FMS pe dhyan dena hai, delays kyun ho rahe hain, ya kisi ka performance kaisa hai — sab pucho." />
       </div>
     </div>
   );
