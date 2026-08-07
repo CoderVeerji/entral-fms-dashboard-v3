@@ -52,6 +52,7 @@ describeIfDb('update-health routes (integration)', () => {
       { fmsId: fmsA, recordId: 'u3', displayName: 'Stale Record', recordStatus: 'OVERDUE', freshness: 'Stale', lastUpdate: hoursAgo(50) },
       { fmsId: fmsA, recordId: 'u4', displayName: 'Critical Record', recordStatus: 'STALLED', freshness: 'Critical', lastUpdate: hoursAgo(200) },
       { fmsId: fmsA, recordId: 'u5', displayName: 'Archived Record', recordStatus: 'OVERDUE', freshness: 'Critical', isArchived: true, lastUpdate: hoursAgo(300) },
+      { fmsId: fmsA, recordId: 'u6', displayName: 'No Plan Yet', recordStatus: 'NOT_STARTED', freshness: 'Critical', lastUpdate: hoursAgo(400) },
     ]);
     await db.insert(schema.actionItems).values([
       { actionId: generateId('act'), fmsId: fmsA, recordId: 'u3', actionType: 'Follow-up', priority: 'High', title: 'Chase it up', status: 'Open' },
@@ -85,8 +86,17 @@ describeIfDb('update-health routes (integration)', () => {
     expect(res.status).toBe(200);
     const body = await asJson(res);
     const ids = body.data.rows.map((r: { recordId: string }) => r.recordId);
-    expect(ids).toEqual(['u1', 'u4', 'u3', 'u2']); // never first, then oldest to newest, u5 archived excluded
+    // u5 archived and u6 NOT_STARTED (no plan on its current stage) both excluded
+    expect(ids).toEqual(['u1', 'u4', 'u3', 'u2']); // never first, then oldest to newest
     expect(body.data.rowsTotal).toBe(4);
+  });
+
+  it('excludes NOT_STARTED records (no plan on current stage) from both cards and rows', async () => {
+    const res = await app.request(`/api/update-health?fmsId=${fmsA}&freshness=Critical`, auth(), env);
+    const body = await asJson(res);
+    // u6 is Critical freshness like u4, but NOT_STARTED — must not inflate the critical card or appear in rows
+    expect(body.data.cards.critical).toBe(1);
+    expect(body.data.rows.map((r: { recordId: string }) => r.recordId)).toEqual(['u4']);
   });
 
   it('cards reflect freshness bucket counts regardless of freshness filter', async () => {

@@ -16,10 +16,17 @@ updateHealthRoutes.get('/', requireAuth('records.view'), async (c) => {
   const db = c.get('db');
   const q = c.req.query();
 
+  // NOT_STARTED means the current stage has no plan time at all (see app/FMS_Status_Publisher.gs's
+  // evaluateRecord_) — per ops guidance there's always some real reason a step hasn't been given a
+  // plan yet (waiting on another department, a hold, etc.), so it's never "gone quiet" in the sense
+  // this page means; it only becomes trackable once something gives it a plan. Excluded from both
+  // the cards and the row list, same as it's excluded from the Dashboard's status counts.
+  const notStartedCondition = sql`${records.recordStatus} != 'NOT_STARTED'`;
+
   // Cards reflect every freshness bucket for the current fmsId scope regardless of which one is
   // selected below — same convention as Code.gs's getUpdateHealth, which built `cards` from the
   // unfiltered base set so switching the freshness filter doesn't change the card counts.
-  const cardConditions = [eq(records.isArchived, false)];
+  const cardConditions = [eq(records.isArchived, false), notStartedCondition];
   if (q.fmsId) cardConditions.push(eq(records.fmsId, q.fmsId));
   const cardRows = await db.select({
     freshness: records.freshness,
@@ -36,7 +43,7 @@ updateHealthRoutes.get('/', requireAuth('records.view'), async (c) => {
     if (r.freshness === 'Never') cards.neverUpdated = Number(r.count);
   });
 
-  const conditions = [eq(records.isArchived, false)];
+  const conditions = [eq(records.isArchived, false), notStartedCondition];
   if (q.fmsId) conditions.push(eq(records.fmsId, q.fmsId));
   if (q.freshness) conditions.push(eq(records.freshness, q.freshness));
   if (q.todayOnly === 'true') conditions.push(sql`${records.lastUpdate} >= date_trunc('day', now())`);
