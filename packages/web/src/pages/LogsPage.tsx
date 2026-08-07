@@ -44,7 +44,10 @@ function SyncLogTable({ rows }: { rows: SyncLogRow[] }) {
             <tr key={r.syncId}>
               <td>{formatDateTime(r.startedAt)}</td>
               <td>{r.fmsId}</td>
-              <td><span className={'badge badge-' + (r.status === 'SUCCESS' ? 'green' : 'red')}>{r.status}</span></td>
+              <td>
+                <span className={'badge badge-' + (r.status === 'SUCCESS' ? 'green' : 'red')}>{r.status}</span>
+                {r.status !== 'SUCCESS' && r.errorMessage && <div style={{ fontSize: 11, color: 'var(--text-soft)', marginTop: 2, maxWidth: 320 }}>{r.errorMessage}</div>}
+              </td>
               <td>{r.rowsRead}</td>
               <td>{r.durationMs != null ? `${(r.durationMs / 1000).toFixed(1)}s` : '—'}</td>
               <td>{r.triggeredBy || '—'}</td>
