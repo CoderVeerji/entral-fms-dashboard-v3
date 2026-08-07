@@ -74,8 +74,8 @@ export function DashboardPage() {
         <div onClick={() => navigate('liveRecords', fmsId ? { fmsId } : {})} style={{ cursor: 'pointer', position: 'relative' }}>
           <KpiCard icon="fa-database" color="blue" value={kpi.totalActiveRecords} label="Active Records" />
           <HelpHotspot title="Active Records"
-            en="Every record currently being tracked across your connected FMS that hasn't finished yet — the total workload right now."
-            hi="Saari FMS mein abhi jo bhi records track ho rahe hain aur poore complete nahi hue — matlab abhi ka total kaam." />
+            en="The total count of every record across your connected FMS — running, completed, everything — except ones marked archived. Not just the pending ones; see Running On Time/At Risk/Overdue/Stalled below for the pending breakdown."
+            hi="Saari connected FMS ke saare records ka total count — running, completed, sab kuch — sirf archived records isme nahi aate. Ye sirf pending wale nahi hain; pending ka breakdown neeche Running On Time/At Risk/Overdue/Stalled cards mein dekho." />
         </div>
         <div onClick={() => navigate('liveRecords', { ...(fmsId ? { fmsId } : {}), status: 'RUNNING_ON_TIME' })} style={{ cursor: 'pointer', position: 'relative' }}>
           <KpiCard icon="fa-circle-play" color="blue" value={kpi.runningOnTime} label="Running On Time" />
