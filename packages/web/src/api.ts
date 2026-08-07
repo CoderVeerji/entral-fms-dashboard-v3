@@ -621,7 +621,7 @@ export function getDataHealth(token: string) {
   return request<{ checkedAt: string | null; issues: DataHealthIssue[]; issueCount: number }>('/api/data-health', {}, token);
 }
 
-export interface AiChatTurn { role: 'user' | 'model'; text: string }
+export interface AiChatTurn { role: 'user' | 'assistant'; text: string }
 
 export function aiChat(token: string, message: string, history: AiChatTurn[]) {
   return request<{ text: string }>('/api/ai/chat', {

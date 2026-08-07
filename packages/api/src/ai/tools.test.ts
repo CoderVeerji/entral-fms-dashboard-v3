@@ -1,7 +1,7 @@
 // Integration tests against a REAL Postgres — same convention as bottlenecks.test.ts. Exercises
-// runAiTool directly (not through Gemini/HTTP) since these are the only parts of the AI feature
-// with real query-correctness risk; the Gemini REST client itself is a thin, manually-verified
-// wrapper (see gemini.ts's header comment) that would need a real network call + real quota to
+// runAiTool directly (not through Groq/HTTP) since these are the only parts of the AI feature
+// with real query-correctness risk; the Groq REST client itself is a thin, manually-verified
+// wrapper (see groq.ts's header comment) that would need a real network call + real quota to
 // test here, which CI shouldn't spend on every run.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { drizzle } from 'drizzle-orm/node-postgres';

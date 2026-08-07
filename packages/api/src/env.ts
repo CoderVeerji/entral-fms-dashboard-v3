@@ -18,8 +18,10 @@ export interface Env {
   GMAIL_SENDER_EMAIL?: string;
   // Public web app URL, used only for the "Open Dashboard" link in reset emails.
   APP_URL?: string;
-  // Google AI Studio API key (free tier, no card) — powers the AI Assistant chat and the
+  // Groq API key (free tier, no card, console.groq.com) — powers the AI Assistant chat and the
   // scheduled digest/check-in emails. Absent = /api/ai/chat returns AI_NOT_CONFIGURED; the rest
-  // of the app is unaffected.
-  GEMINI_API_KEY?: string;
+  // of the app is unaffected. Was Gemini's API key originally — switched after real use found
+  // Gemini's free-tier rate limit (5 req/min) too tight for a tool-calling chat feature; Groq's
+  // free tier is 30 req/min, 14,400/day (see ai/groq.ts's header comment).
+  GROQ_API_KEY?: string;
 }

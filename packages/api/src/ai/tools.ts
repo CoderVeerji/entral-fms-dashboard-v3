@@ -2,14 +2,14 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { fmsMaster, fmsEvalCache, records, dataHealthCache } from '@fms/db';
 import type { AggregateTotals, FinalizedBucket } from '@fms/core';
 import type { Db } from '../db';
-import type { GeminiTool } from './gemini';
+import type { GroqTool } from './groq';
 
 // Every tool here is read-only and wraps the SAME data the dashboard's own pages already show
 // (fms_eval_cache, records, data_health_cache — all computed by packages/sync, not re-derived
 // here) — the model never sees raw table scans, only small, already-aggregated JSON, so answers
 // stay grounded in real numbers and token usage per call stays cheap (see plan §"M7" on why this
-// matters for staying inside Gemini's free-tier daily quota).
-export const AI_TOOLS: GeminiTool[] = [
+// matters for staying inside the free-tier daily quota).
+export const AI_TOOLS: GroqTool[] = [
   {
     name: 'get_fms_overview',
     description: 'List every connected FMS with its overall health score (0-100), active/overdue/stalled/at-risk record counts, and last sync status. Start here for any "which FMS" or "how are we doing overall" question.',

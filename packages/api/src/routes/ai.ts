@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { ok, AppError } from '@fms/core';
 import { requireAuth } from '../middleware/auth';
-import { callGemini, GeminiError, type GeminiContent } from '../ai/gemini';
+import { callGroq, GroqError, type GroqMessage } from '../ai/groq';
 import { AI_TOOLS, runAiTool } from '../ai/tools';
 import type { Env } from '../env';
 import type { Variables } from '../types';
@@ -16,53 +16,50 @@ Describe performance in terms a non-technical reader immediately understands: on
 
 Format answers in markdown: use a short bold summary line, a table (with a header row) whenever you're presenting more than two rows of comparable data (per-stage or per-doer breakdowns, several FMS side by side) — table columns should be percentages and counts, never a raw score column — and bullet points for recommendations. Keep tables narrow — only the columns that matter for the question asked.
 
-If answering needs more than one tool, request all of them together in the same turn rather than one at a time — each extra round trip costs real time against a tight rate limit.`;
+If answering needs more than one tool, request all of them together in the same turn rather than one at a time — each extra round trip costs real time against the rate limit.`;
 
 // Bounds how many times the model can call a tool before answering — a runaway loop would burn
-// through Gemini's free-tier daily quota fast (see plan §"M7"), so this fails loud instead.
+// through the free-tier quota fast, so this fails loud instead.
 const MAX_TOOL_ITERATIONS = 5;
 
-interface HistoryTurn { role: 'user' | 'model'; text: string }
+interface HistoryTurn { role: 'user' | 'assistant'; text: string }
 
 // v1 is deliberately stateless (see plan §"M7 — Chat") — the client keeps the message list and
 // resends it as `history` every call; nothing is persisted server-side. History turns are plain
-// text only (never a raw functionCall/thoughtSignature turn — those exist only inside this
-// request's own tool-calling loop below and are discarded once a final answer is produced), so
-// reconstructing `contents` from client-supplied history never risks Gemini's "missing
-// thought_signature" requirement, which only applies to function-call turns (confirmed against
-// the real API during implementation).
+// text only (never a raw tool_calls turn — those exist only inside this request's own
+// tool-calling loop below and are discarded once a final answer is produced).
 aiRoutes.post('/chat', requireAuth('ai.chat'), async (c) => {
-  const apiKey = c.env.GEMINI_API_KEY;
-  if (!apiKey) throw new AppError('AI_NOT_CONFIGURED', 'GEMINI_API_KEY is not set — the AI Assistant is unavailable until it is.');
+  const apiKey = c.env.GROQ_API_KEY;
+  if (!apiKey) throw new AppError('AI_NOT_CONFIGURED', 'GROQ_API_KEY is not set — the AI Assistant is unavailable until it is.');
 
   const db = c.get('db');
   const body = await c.req.json<{ message?: string; history?: HistoryTurn[] }>();
   const message = (body.message || '').trim();
   if (!message) throw new AppError('INVALID_INPUT', 'message is required.');
 
-  const contents: GeminiContent[] = (body.history || [])
-    .filter((h) => h.text && h.text.trim())
-    .map((h) => ({ role: h.role, parts: [{ text: h.text }] }));
-  contents.push({ role: 'user', parts: [{ text: message }] });
+  const messages: GroqMessage[] = [{ role: 'system', content: SYSTEM_INSTRUCTION }];
+  (body.history || []).filter((h) => h.text && h.text.trim()).forEach((h) => {
+    messages.push({ role: h.role, content: h.text });
+  });
+  messages.push({ role: 'user', content: message });
 
   let finalText: string | null = null;
   try {
     for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
-      const result = await callGeminiWithRetry(apiKey, { systemInstruction: SYSTEM_INSTRUCTION, contents, tools: AI_TOOLS });
-      contents.push(result.content);
-      if (!result.functionCalls.length) { finalText = result.text; break; }
+      const result = await callGroqWithRetry(apiKey, { messages, tools: AI_TOOLS });
+      messages.push(result.message);
+      if (!result.toolCalls.length) { finalText = result.text; break; }
 
-      for (const call of result.functionCalls) {
+      for (const call of result.toolCalls) {
         const toolResult = await runAiTool(db, call.name, call.args);
-        contents.push({ role: 'user', parts: [{ functionResponse: { name: call.name, response: { result: toolResult } } }] });
+        messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(toolResult) });
       }
     }
   } catch (err) {
-    // Never leak Gemini's raw error JSON to the chat UI — translate to something a user can act
-    // on. 429 is expected occasional behavior here, not a bug: real-world testing found this
-    // free-tier key's actual limit is 5 requests/minute, and one question can cost several calls.
-    if (err instanceof GeminiError && err.status === 429) {
-      throw new AppError('AI_RATE_LIMITED', 'The AI Assistant is on a free plan limited to a few questions per minute — please wait about a minute before trying again.');
+    // Never leak the provider's raw error JSON to the chat UI — translate to something a user
+    // can act on.
+    if (err instanceof GroqError && err.status === 429) {
+      throw new AppError('AI_RATE_LIMITED', 'The AI Assistant is getting a lot of questions right now — please wait a moment and try again.');
     }
     throw new AppError('AI_ERROR', 'The AI Assistant had trouble answering that — please try again.');
   }
@@ -74,21 +71,16 @@ aiRoutes.post('/chat', requireAuth('ai.chat'), async (c) => {
   return c.json(ok({ text: finalText }));
 });
 
-// One retry, after Gemini's own suggested wait (capped) — matches REBUILD_PLAN's "no retry
-// storms" principle: a single bounded retry for a transient rate limit, not a loop. Real-world
-// testing found this key's free-tier limit (5 requests/minute) tight enough that even a fresh
-// manual retry ~20s later can still 429 — the fix that actually matters more than a longer/more
-// aggressive retry here is using fewer Gemini calls per question in the first place (see the
-// system prompt's "request tools together" instruction above), since each question already costs
-// at least 2 calls (decide → answer) before any retry.
-async function callGeminiWithRetry(apiKey: string, params: Parameters<typeof callGemini>[1]) {
+// One retry, after the provider's own suggested wait if given (capped) — matches REBUILD_PLAN's
+// "no retry storms" principle: a single bounded retry for a transient rate limit, not a loop.
+async function callGroqWithRetry(apiKey: string, params: Parameters<typeof callGroq>[1]) {
   try {
-    return await callGemini(apiKey, params);
+    return await callGroq(apiKey, params);
   } catch (err) {
-    if (err instanceof GeminiError && err.status === 429) {
-      const waitSeconds = Math.min(err.retryAfterSeconds ?? 10, 25);
+    if (err instanceof GroqError && err.status === 429) {
+      const waitSeconds = Math.min(err.retryAfterSeconds ?? 5, 15);
       await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
-      return await callGemini(apiKey, params);
+      return await callGroq(apiKey, params);
     }
     throw err;
   }

@@ -37,10 +37,10 @@ export function AiAssistantPage() {
     setSending(false);
     if (!res.ok) {
       toast.error(res.message);
-      setMessages((m) => [...m, { role: 'model', text: `Sorry, something went wrong: ${res.message}` }]);
+      setMessages((m) => [...m, { role: 'assistant', text: `Sorry, something went wrong: ${res.message}` }]);
       return;
     }
-    setMessages((m) => [...m, { role: 'model', text: res.data.text }]);
+    setMessages((m) => [...m, { role: 'assistant', text: res.data.text }]);
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
@@ -63,12 +63,12 @@ export function AiAssistantPage() {
           </div>
         )}
         {messages.map((m, i) => (
-          <div key={i} className={'ai-msg ' + (m.role === 'user' ? 'ai-msg-user' : 'ai-msg-model')}>
-            {m.role === 'model' ? <MarkdownView text={m.text} /> : m.text}
+          <div key={i} className={'ai-msg ' + (m.role === 'user' ? 'ai-msg-user' : 'ai-msg-assistant')}>
+            {m.role === 'assistant' ? <MarkdownView text={m.text} /> : m.text}
           </div>
         ))}
         {sending && (
-          <div className="ai-msg ai-msg-model ai-msg-typing">
+          <div className="ai-msg ai-msg-assistant ai-msg-typing">
             <span /><span /><span />
           </div>
         )}
