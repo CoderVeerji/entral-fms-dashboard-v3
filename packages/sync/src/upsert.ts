@@ -1,4 +1,4 @@
-import { eq, and, notInArray, sql } from 'drizzle-orm';
+import { eq, and, inArray, notInArray, sql } from 'drizzle-orm';
 import { records, stageEvents, fmsEvalCache } from '@fms/db';
 import { computeAggregates, finalizeBucket, computeTimelinessScore, computePendingHealthScore, computeDataQualityScore, computeFreshnessScore, computeOverallFmsScore } from '@fms/core';
 import type { NormalizedRecord, NormalizedStageEvent } from './transform';
@@ -47,7 +47,7 @@ export async function replaceStageEventsForFms(db: Db, fmsId: string, allEvents:
 export async function markArchived(db: Db, fmsId: string, recordIds: string[]): Promise<void> {
   if (!recordIds.length) return;
   await db.update(records).set({ isArchived: true, syncedAt: new Date() })
-    .where(and(eq(records.fmsId, fmsId), sql`${records.recordId} = ANY(${recordIds})`));
+    .where(and(eq(records.fmsId, fmsId), inArray(records.recordId, recordIds)));
 }
 
 // Recomputes this FMS's fms_eval_cache row from whatever is currently in `records`/`stage_events`
