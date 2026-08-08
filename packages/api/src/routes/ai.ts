@@ -56,8 +56,15 @@ aiRoutes.post('/chat', requireAuth('ai.chat'), async (c) => {
       }
     }
   } catch (err) {
-    // Never leak the provider's raw error JSON to the chat UI — translate to something a user
-    // can act on.
+    // Log the real cause to the Worker's own console (visible via `wrangler tail`) before
+    // translating it to something a user can act on — the chat UI never sees this, only the
+    // generic message below, but a silent catch here means every failure is genuinely
+    // undiagnosable after the fact (this is exactly what made an earlier report of this same
+    // error impossible to root-cause).
+    console.error('AI chat failed:', err instanceof Error ? (err.stack ?? err.message) : String(err));
+    if (err instanceof GroqError) {
+      console.error('GroqError detail:', JSON.stringify({ status: err.status, retryAfterSeconds: err.retryAfterSeconds, message: err.message }));
+    }
     if (err instanceof GroqError && err.status === 429) {
       throw new AppError('AI_RATE_LIMITED', 'The AI Assistant is getting a lot of questions right now — please wait a moment and try again.');
     }
