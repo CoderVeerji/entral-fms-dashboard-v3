@@ -29,9 +29,17 @@ describeIfDb('doer performance routes (integration)', () => {
 
   const env = { DATABASE_URL: DATABASE_URL! };
 
+  // A doer's rollup key is `${doerName}|${doerEmail}` (see doerPerformance.ts's rollupDoerBuckets)
+  // and the "no fmsId filter" tests below deliberately query across EVERY active FMS in the whole
+  // test database — Vitest runs test files concurrently against the same shared Postgres, so
+  // reusing a plain 'priya@x.com'/'ravi@x.com' here previously collided with bottlenecks.test.ts's
+  // and misReport.test.ts's own identically-named fixtures whenever their beforeAll happened to
+  // still be present, silently inflating fmsCount/assigned/completed (a real, intermittent CI
+  // failure this caused). Suffixed with .doerperf so this file's identities can never collide with
+  // another test file's, regardless of execution order/timing.
   function bucket(overrides: Partial<FinalizedBucket> = {}) {
     return {
-      key: 'Priya', doerName: 'Priya', doerEmail: 'priya@x.com', assigned: 10, completed: 8, onTime: 6, late: 2,
+      key: 'Priya', doerName: 'Priya', doerEmail: 'priya.doerperf@x.com', assigned: 10, completed: 8, onTime: 6, late: 2,
       pending: 2, overdue: 1, stalled: 0, avgDelayMinutes: 45, avgDelayHuman: '45m', maxDelayMinutes: 90,
       maxDelayHuman: '1h 30m', onTimePercent: 75, dataExceptions: 0, criticalStale: 1, totalDelayDays: 0.1,
       bottleneckScore: 5.1, reason: 'test', ...overrides,
@@ -64,8 +72,8 @@ describeIfDb('doer performance routes (integration)', () => {
     ]);
 
     await db.insert(schema.actionItems).values([
-      { actionId: generateId('act'), fmsId: fmsA, assignedEmail: 'priya@x.com', actionType: 'Follow-up', priority: 'High', title: 'Open one', status: 'Open' },
-      { actionId: generateId('act'), fmsId: fmsA, assignedEmail: 'priya@x.com', actionType: 'Follow-up', priority: 'Low', title: 'Resolved one', status: 'Resolved' },
+      { actionId: generateId('act'), fmsId: fmsA, assignedEmail: 'priya.doerperf@x.com', actionType: 'Follow-up', priority: 'High', title: 'Open one', status: 'Open' },
+      { actionId: generateId('act'), fmsId: fmsA, assignedEmail: 'priya.doerperf@x.com', actionType: 'Follow-up', priority: 'Low', title: 'Resolved one', status: 'Resolved' },
     ]);
 
     // For the dateFrom/dateTo live-recompute branch — same pattern as bottlenecks.test.ts's own
@@ -74,7 +82,7 @@ describeIfDb('doer performance routes (integration)', () => {
       { fmsId: fmsA, recordId: 'dr1', displayName: 'Doer Range Rec', recordStatus: 'OVERDUE', freshness: 'Stale' },
     ]);
     await db.insert(schema.stageEvents).values([
-      { fmsId: fmsA, recordId: 'dr1', stageIndex: 0, stageName: 'Review', doerName: 'Ravi', doerEmail: 'ravi@x.com', status: 'COMPLETED_LATE', actualTime: new Date('2026-08-02T00:00:00Z'), varianceMinutes: 90 },
+      { fmsId: fmsA, recordId: 'dr1', stageIndex: 0, stageName: 'Review', doerName: 'Ravi', doerEmail: 'ravi.doerperf@x.com', status: 'COMPLETED_LATE', actualTime: new Date('2026-08-02T00:00:00Z'), varianceMinutes: 90 },
     ]);
 
     const loginRes = await app.request('/api/auth/login', {
@@ -109,7 +117,7 @@ describeIfDb('doer performance routes (integration)', () => {
     const res = await app.request('/api/reports/doer-performance', auth(), env);
     expect(res.status).toBe(200);
     const body = await asJson(res);
-    const priya = body.data.find((d: { email: string }) => d.email === 'priya@x.com');
+    const priya = body.data.find((d: { email: string }) => d.email === 'priya.doerperf@x.com');
     expect(priya.fmsCount).toBe(2);
     expect(priya.assignedStages).toBe(15); // 10 + 5
     expect(priya.completed).toBe(13); // 8 + 5
@@ -119,14 +127,14 @@ describeIfDb('doer performance routes (integration)', () => {
   it('counts only open (non-resolved) action items assigned to the doer', async () => {
     const res = await app.request('/api/reports/doer-performance', auth(), env);
     const body = await asJson(res);
-    const priya = body.data.find((d: { email: string }) => d.email === 'priya@x.com');
+    const priya = body.data.find((d: { email: string }) => d.email === 'priya.doerperf@x.com');
     expect(priya.openActions).toBe(1);
   });
 
   it('scopes to a single fmsId when filtered', async () => {
     const res = await app.request(`/api/reports/doer-performance?fmsId=${fmsB}`, auth(), env);
     const body = await asJson(res);
-    const priya = body.data.find((d: { email: string }) => d.email === 'priya@x.com');
+    const priya = body.data.find((d: { email: string }) => d.email === 'priya.doerperf@x.com');
     expect(priya.fmsCount).toBe(1);
     expect(priya.assignedStages).toBe(5);
   });
@@ -137,8 +145,8 @@ describeIfDb('doer performance routes (integration)', () => {
     const body = await asJson(res);
     // Priya only exists in the eval-cache fixture, not in records/stage_events, so a date-filtered
     // query (which ignores the cache entirely) must not find her.
-    expect(body.data.find((d: { email: string }) => d.email === 'priya@x.com')).toBeUndefined();
-    const ravi = body.data.find((d: { email: string }) => d.email === 'ravi@x.com');
+    expect(body.data.find((d: { email: string }) => d.email === 'priya.doerperf@x.com')).toBeUndefined();
+    const ravi = body.data.find((d: { email: string }) => d.email === 'ravi.doerperf@x.com');
     expect(ravi.completed).toBe(1);
     expect(ravi.late).toBe(1);
   });
@@ -146,6 +154,6 @@ describeIfDb('doer performance routes (integration)', () => {
   it('a date range excluding the completion date finds nothing for that doer', async () => {
     const res = await app.request(`/api/reports/doer-performance?fmsId=${fmsA}&dateFrom=2020-01-01&dateTo=2020-01-02`, auth(), env);
     const body = await asJson(res);
-    expect(body.data.find((d: { email: string }) => d.email === 'ravi@x.com')).toBeUndefined();
+    expect(body.data.find((d: { email: string }) => d.email === 'ravi.doerperf@x.com')).toBeUndefined();
   });
 });
