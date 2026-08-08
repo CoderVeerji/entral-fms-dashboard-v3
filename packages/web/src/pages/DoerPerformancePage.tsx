@@ -18,10 +18,25 @@ function scoreColor(score: number | null): string {
   return 'red';
 }
 
+function toISODate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Monday-start calendar week, through today — "this week so far", not a future-dated range.
+function startOfWeekMonday(d: Date): Date {
+  const day = d.getDay(); // 0=Sun..6=Sat
+  const diffToMonday = day === 0 ? 6 : day - 1;
+  const monday = new Date(d);
+  monday.setDate(d.getDate() - diffToMonday);
+  return monday;
+}
+
 export function DoerPerformancePage() {
   const { token, user } = useAuth();
   const [fmsList, setFmsList] = useState<FmsConfig[]>([]);
   const [fmsId, setFmsId] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [rows, setRows] = useState<DoerPerformanceRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +44,17 @@ export function DoerPerformancePage() {
 
   function drill(e: MouseEvent, r: DoerPerformanceRow, status: string | undefined, label: string) {
     e.stopPropagation();
-    setDrillTarget({ fmsId, scope: 'doer', key: r.doerName, status, label: `${r.doerName} — ${label}` });
+    setDrillTarget({ fmsId, scope: 'doer', key: r.doerName, status, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, label: `${r.doerName} — ${label}` });
+  }
+
+  function applyPreset(preset: 'today' | 'yesterday' | 'week') {
+    const now = new Date();
+    if (preset === 'today') { const s = toISODate(now); setDateFrom(s); setDateTo(s); return; }
+    if (preset === 'yesterday') {
+      const y = new Date(now); y.setDate(now.getDate() - 1);
+      const s = toISODate(y); setDateFrom(s); setDateTo(s); return;
+    }
+    setDateFrom(toISODate(startOfWeekMonday(now))); setDateTo(toISODate(now));
   }
 
   useEffect(() => {
@@ -41,20 +66,23 @@ export function DoerPerformancePage() {
     if (!token) return;
     setLoading(true);
     setError(null);
-    const res = await api.getDoerPerformance(token, fmsId || undefined);
+    const res = await api.getDoerPerformance(token, { fmsId: fmsId || undefined, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined });
     setLoading(false);
     if (!res.ok) { setError(res.message); return; }
     setRows(res.data);
-  }, [token, fmsId]);
+  }, [token, fmsId, dateFrom, dateTo]);
 
   useEffect(() => { load(); }, [load]);
 
-  // Ranked by total stages completed ("points") — a productivity leaderboard, distinct from the
-  // 0-100 quality performanceScore shown in the detail table below. Sorted rows already come back
-  // sorted by performanceScore from the API, so re-sort here by completed count for this view.
-  const leaderboardRows = [...rows]
-    .sort((a, b) => b.completed - a.completed)
-    .map((r) => ({ key: r.email || r.doerName, name: r.doerName, score: r.completed }));
+  // Ranked by the same 0-100 timeliness/lateness score as the Score column below — judged purely
+  // on how on-time and how late someone is, never on how much work they were given (see
+  // doerPerformance.ts's SCORING.DOER_WEIGHTS). Completed count shown as context only, not the
+  // ranking driver. Rows with no completed work yet (performanceScore null) have nothing to judge
+  // and are left off the leaderboard entirely rather than sorting to the bottom as a "0".
+  const leaderboardRows = rows
+    .filter((r) => r.performanceScore !== null)
+    .sort((a, b) => (b.performanceScore ?? 0) - (a.performanceScore ?? 0))
+    .map((r) => ({ key: r.email || r.doerName, name: r.doerName, score: r.performanceScore ?? 0, subtitle: `${r.completed} completed` }));
   const currentUserKey = user?.email ? rows.find((r) => r.email?.toLowerCase() === user.email?.toLowerCase())?.email : undefined;
 
   return (
@@ -64,9 +92,25 @@ export function DoerPerformancePage() {
           <option value="">All FMS</option>
           {fmsList.map((f) => <option key={f.fmsId} value={f.fmsId}>{f.fmsName}</option>)}
         </select>
+        <label className="filter-date-label">
+          From
+          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+        </label>
+        <label className="filter-date-label">
+          To
+          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+        </label>
+        <button className="btn btn-outline btn-sm" onClick={() => applyPreset('today')}>Today</button>
+        <button className="btn btn-outline btn-sm" onClick={() => applyPreset('yesterday')}>Yesterday</button>
+        <button className="btn btn-outline btn-sm" onClick={() => applyPreset('week')}>This Week</button>
+        {(dateFrom || dateTo) && (
+          <button className="btn btn-ghost btn-sm" onClick={() => { setDateFrom(''); setDateTo(''); }}>
+            <i className="fas fa-xmark" /> Clear dates
+          </button>
+        )}
         <HelpHotspot inline title="Doer Performance"
-          en="Every person's work rolled up across every FMS they touch. The Leaderboard ranks by raw output (stages completed); the table below ranks by quality (the Score column). Click any count to see the exact stage events."
-          hi="Har vyakti ka kaam, wo jitni bhi FMS mein kaam karta hai un sabko milakar. Leaderboard raw output (kitne stages complete kiye) se rank karta hai; neeche wali table quality (Score column) se. Kisi bhi count pe click karke exact stage events dekh sakte ho." />
+          en="Every person's work rolled up across every FMS they touch, judged purely on timeliness — how often they're on time and how late when they're not — never on how much work they were given. The Leaderboard and the Score column use the same judgment. Filter by date range to check a specific period; leave it blank for all-time. Click any count to see the exact stage events."
+          hi="Har vyakti ka kaam, jitni bhi FMS mein wo kaam karta hai un sabko milakar — sirf timeliness pe judge kiya jata hai: kitni baar time pe kiya, aur jab nahi kiya to kitna late — kabhi bhi kitna kaam mila usse nahi. Leaderboard aur Score column dono isi judgment se bante hain. Date range se specific period check karo; khaali chodo to all-time. Kisi bhi count pe click karke exact stage events dekh sakte ho." />
       </div>
 
       {error && <div className="login-error">{error}</div>}
@@ -77,9 +121,9 @@ export function DoerPerformancePage() {
         <>
           {leaderboardRows.length > 0 && (
             <>
-              <div className="section-title"><i className="fas fa-medal" />Leaderboard — Stages Completed</div>
+              <div className="section-title"><i className="fas fa-medal" />Leaderboard — On-Time Performance</div>
               <div style={{ marginBottom: 22 }}>
-                <Leaderboard rows={leaderboardRows} currentUserKey={currentUserKey} scoreLabel="Completed" scoreSuffix=" pts" />
+                <Leaderboard rows={leaderboardRows} currentUserKey={currentUserKey} scoreLabel="Score" scoreSuffix="/100" />
               </div>
             </>
           )}
@@ -96,8 +140,8 @@ export function DoerPerformancePage() {
                   <th>Late</th><th>Overdue</th><th>Stalled</th><th>Avg Delay</th><th>Open Actions</th>
                   <th>Score
                     <HelpHotspot inline title="Score"
-                      en="A 0-100 quality score combining on-time rate, how much of their pending work is overdue/stalled, and how fresh their records are — a real, comparable number (unlike Bottleneck Analysis's ranking-only score)."
-                      hi="Ek 0-100 quality score jo on-time rate, kitna pending kaam overdue/stalled hai, aur records kitne fresh hain — sab milakar banta hai. Ye ek real, comparable number hai (Bottleneck Analysis wale ranking-only score se alag)." />
+                      en="A 0-100 timeliness score: 55% on-time rate, 30% how late on average when late (the more days, the lower), 15% how much of everything they've ever been assigned is currently overdue. Never affected by how much work someone has — a person with 5 tasks all on time scores exactly as well as one with 500."
+                      hi="Ek 0-100 timeliness score: 55% on-time rate, 30% jab late kiya to average kitna late (jitne zyada din, utna kam score), 15% kitna kaam abhi overdue hai unke total assigned mein se. Kaam kitna mila iska koi asar nahi — 5 tasks sab on-time waala bhi utna hi achha score karega jitna 500 tasks waala." />
                   </th>
                 </tr>
               </thead>

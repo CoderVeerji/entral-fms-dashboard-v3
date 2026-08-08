@@ -18,14 +18,15 @@ function initials(name: string): string {
 
 const PODIUM_COLORS = ['podium-gold', 'podium-silver', 'podium-bronze'];
 
-function PodiumSlot({ entry, place }: { entry: LeaderboardEntry; place: 1 | 2 | 3 }) {
+function PodiumSlot({ entry, place, scoreSuffix }: { entry: LeaderboardEntry; place: 1 | 2 | 3; scoreSuffix: string }) {
   return (
     <div className={'podium-slot podium-slot-' + place}>
       {place === 1 && <i className="fas fa-crown podium-crown" />}
       <div className={'podium-avatar ' + PODIUM_COLORS[place - 1]}>{initials(entry.name)}</div>
       <div className="podium-name">{entry.name}</div>
+      {entry.subtitle && <div style={{ fontSize: 10.5, color: 'var(--text-soft)', textAlign: 'center' }}>{entry.subtitle}</div>}
       <div className="podium-rank-badge">{place}</div>
-      <div className="podium-score">{entry.score.toLocaleString()} pts</div>
+      <div className="podium-score">{entry.score.toLocaleString()}{scoreSuffix}</div>
       <div className={'podium-block podium-block-' + place}>{place}</div>
     </div>
   );
@@ -45,9 +46,9 @@ export function Leaderboard({ rows, currentUserKey, scoreLabel = 'Score', scoreS
     <div className="leaderboard">
       {top3.length > 0 && (
         <div className="podium-row">
-          {top3[1] && <PodiumSlot entry={top3[1]} place={2} />}
-          {top3[0] && <PodiumSlot entry={top3[0]} place={1} />}
-          {top3[2] && <PodiumSlot entry={top3[2]} place={3} />}
+          {top3[1] && <PodiumSlot entry={top3[1]} place={2} scoreSuffix={scoreSuffix} />}
+          {top3[0] && <PodiumSlot entry={top3[0]} place={1} scoreSuffix={scoreSuffix} />}
+          {top3[2] && <PodiumSlot entry={top3[2]} place={3} scoreSuffix={scoreSuffix} />}
         </div>
       )}
 
@@ -62,7 +63,7 @@ export function Leaderboard({ rows, currentUserKey, scoreLabel = 'Score', scoreS
                 <td>{i + 4}</td>
                 <td style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <div className="podium-avatar podium-avatar-sm">{initials(r.name)}</div>
-                  {r.name}
+                  <span>{r.name}{r.subtitle && <span style={{ color: 'var(--text-soft)', fontWeight: 400 }}> — {r.subtitle}</span>}</span>
                 </td>
                 <td style={{ textAlign: 'right', fontWeight: 700 }}>{r.score.toLocaleString()}{scoreSuffix}</td>
               </tr>

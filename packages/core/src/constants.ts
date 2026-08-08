@@ -19,7 +19,12 @@ export const STATUS = {
 
 export const SCORING = {
   FMS_WEIGHTS: { timeliness: 0.50, pendingHealth: 0.25, dataQuality: 0.15, freshness: 0.10 },
-  DOER_WEIGHTS: { timeliness: 0.60, pendingHealth: 0.25, freshness: 0.15 },
+  // Doer Performance judges purely on timeliness/lateness, deliberately never on how much work
+  // someone was given — a senior with few tasks and perfect timeliness scores exactly as well as
+  // someone with hundreds. onTimeRate: were they on time. latenessPenalty: when they weren't, by
+  // how much (see scoring.ts's computeLatenessPenalty). overdueRate: how much of everything
+  // they've ever been assigned is sitting overdue right now.
+  DOER_WEIGHTS: { onTimeRate: 0.55, latenessPenalty: 0.30, overdueRate: 0.15 },
 } as const;
 
 // Pending statuses that count toward totalPending/pendingNotOverdue in computeAggregates — STALLED

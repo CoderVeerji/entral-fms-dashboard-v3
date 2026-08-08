@@ -68,6 +68,15 @@ describeIfDb('doer performance routes (integration)', () => {
       { actionId: generateId('act'), fmsId: fmsA, assignedEmail: 'priya@x.com', actionType: 'Follow-up', priority: 'Low', title: 'Resolved one', status: 'Resolved' },
     ]);
 
+    // For the dateFrom/dateTo live-recompute branch — same pattern as bottlenecks.test.ts's own
+    // date-range test (this is the exact same shared computeLiveBuckets helper both routes call).
+    await db.insert(schema.records).values([
+      { fmsId: fmsA, recordId: 'dr1', displayName: 'Doer Range Rec', recordStatus: 'OVERDUE', freshness: 'Stale' },
+    ]);
+    await db.insert(schema.stageEvents).values([
+      { fmsId: fmsA, recordId: 'dr1', stageIndex: 0, stageName: 'Review', doerName: 'Ravi', doerEmail: 'ravi@x.com', status: 'COMPLETED_LATE', actualTime: new Date('2026-08-02T00:00:00Z'), varianceMinutes: 90 },
+    ]);
+
     const loginRes = await app.request('/api/auth/login', {
       method: 'POST', body: JSON.stringify({ username, password }), headers: { 'Content-Type': 'application/json' },
     }, env);
@@ -76,6 +85,8 @@ describeIfDb('doer performance routes (integration)', () => {
   });
 
   afterAll(async () => {
+    await db.delete(schema.stageEvents).where(eq(schema.stageEvents.fmsId, fmsA));
+    await db.delete(schema.records).where(eq(schema.records.fmsId, fmsA));
     await db.delete(schema.actionItems).where(eq(schema.actionItems.fmsId, fmsA));
     await db.delete(schema.fmsEvalCache).where(eq(schema.fmsEvalCache.fmsId, fmsA));
     await db.delete(schema.fmsEvalCache).where(eq(schema.fmsEvalCache.fmsId, fmsB));
@@ -118,5 +129,23 @@ describeIfDb('doer performance routes (integration)', () => {
     const priya = body.data.find((d: { email: string }) => d.email === 'priya@x.com');
     expect(priya.fmsCount).toBe(1);
     expect(priya.assignedStages).toBe(5);
+  });
+
+  it('with a date range, recomputes live from records + stage_events (not the fms_eval_cache rollup)', async () => {
+    const res = await app.request(`/api/reports/doer-performance?fmsId=${fmsA}&dateFrom=2026-08-02&dateTo=2026-08-02`, auth(), env);
+    expect(res.status).toBe(200);
+    const body = await asJson(res);
+    // Priya only exists in the eval-cache fixture, not in records/stage_events, so a date-filtered
+    // query (which ignores the cache entirely) must not find her.
+    expect(body.data.find((d: { email: string }) => d.email === 'priya@x.com')).toBeUndefined();
+    const ravi = body.data.find((d: { email: string }) => d.email === 'ravi@x.com');
+    expect(ravi.completed).toBe(1);
+    expect(ravi.late).toBe(1);
+  });
+
+  it('a date range excluding the completion date finds nothing for that doer', async () => {
+    const res = await app.request(`/api/reports/doer-performance?fmsId=${fmsA}&dateFrom=2020-01-01&dateTo=2020-01-02`, auth(), env);
+    const body = await asJson(res);
+    expect(body.data.find((d: { email: string }) => d.email === 'ravi@x.com')).toBeUndefined();
   });
 });

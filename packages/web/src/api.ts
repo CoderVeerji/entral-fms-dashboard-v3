@@ -421,9 +421,13 @@ export interface DoerPerformanceRow {
   performanceScore: number | null;
 }
 
-export function getDoerPerformance(token: string, fmsId?: string) {
+export interface DoerPerformanceQuery { fmsId?: string; dateFrom?: string; dateTo?: string }
+
+export function getDoerPerformance(token: string, query: DoerPerformanceQuery = {}) {
   const params = new URLSearchParams();
-  if (fmsId) params.set('fmsId', fmsId);
+  if (query.fmsId) params.set('fmsId', query.fmsId);
+  if (query.dateFrom) params.set('dateFrom', query.dateFrom);
+  if (query.dateTo) params.set('dateTo', query.dateTo);
   return request<DoerPerformanceRow[]>(`/api/reports/doer-performance?${params.toString()}`, {}, token);
 }
 

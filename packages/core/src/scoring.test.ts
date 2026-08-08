@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   safeRatio, scoreOrNull, computeTimelinessScore, computePendingHealthScore,
-  computeDataQualityScore, computeFreshnessScore, computeOverallFmsScore,
+  computeDataQualityScore, computeFreshnessScore, computeOverallFmsScore, computeLatenessPenalty,
 } from './scoring';
 
 describe('safeRatio', () => {
@@ -73,6 +73,30 @@ describe('computeFreshnessScore', () => {
     expect(computeFreshnessScore(['Fresh', 'Critical'])).toBe(50);
     // scoreOrNull rounds to 1 decimal, so 28.333... becomes 28.3
     expect(computeFreshnessScore(['Warning', 'Stale', 'Never'])).toBe(28.3);
+  });
+});
+
+describe('computeLatenessPenalty', () => {
+  it('scores 100 (no penalty) when there is no delay data at all', () => {
+    expect(computeLatenessPenalty(null)).toBe(100);
+    expect(computeLatenessPenalty(undefined)).toBe(100);
+  });
+
+  it('scores 100 at exactly zero average delay', () => {
+    expect(computeLatenessPenalty(0)).toBe(100);
+  });
+
+  it('decays 15 points per average day late', () => {
+    expect(computeLatenessPenalty(1440)).toBe(85); // 1 day
+    expect(computeLatenessPenalty(1440 * 3)).toBe(55); // 3 days
+  });
+
+  it('floors at 0, never goes negative', () => {
+    expect(computeLatenessPenalty(1440 * 10)).toBe(0); // 10 days — well past the ~6.7 day floor
+  });
+
+  it('treats a negative delay the same as zero (never a bonus for negative input)', () => {
+    expect(computeLatenessPenalty(-500)).toBe(100);
   });
 });
 

@@ -37,7 +37,7 @@ export function DashboardPage() {
     setLoading(true);
     const [res, doerRes] = await Promise.all([
       api.getDashboard(token, fmsId || undefined),
-      api.getDoerPerformance(token, fmsId || undefined),
+      api.getDoerPerformance(token, { fmsId: fmsId || undefined }),
     ]);
     setLoading(false);
     if (!res.ok) { setError(res.message); return; }
