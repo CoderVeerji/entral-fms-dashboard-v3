@@ -47,6 +47,11 @@ describeIfDb('records routes (integration)', () => {
 
     const now = new Date();
     const hoursFromNow = (h: number) => new Date(now.getTime() + h * 3600000);
+    // Noon UTC today, not a relative "+2h" offset — a relative offset can cross midnight into
+    // tomorrow depending on what wall-clock hour the CI run happens to execute at, making the
+    // "due today" assertion flaky. -30h/+30h below don't have this problem (safely more than a
+    // day away from the boundary in both directions regardless of current time-of-day).
+    const todayAtUTC = (hour: number) => new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), hour, 0, 0));
     await db.insert(schema.records).values([
       { fmsId: fmsA, recordId: 'r1', displayName: 'Acme Corp', doer: 'Priya', recordStatus: 'OVERDUE', freshness: 'Stale', planTime: new Date('2026-08-01T00:00:00Z') },
       { fmsId: fmsA, recordId: 'r2', displayName: 'Beta Traders', doer: 'Ravi', recordStatus: 'COMPLETED_ON_TIME', freshness: 'Fresh', planTime: new Date('2026-08-02T00:00:00Z') },
@@ -55,7 +60,7 @@ describeIfDb('records routes (integration)', () => {
       { fmsId: fmsB, recordId: 'r5', displayName: 'Other FMS Record', doer: 'Amit', recordStatus: 'OVERDUE', freshness: 'Stale' },
       // For the workload= drill-through param (see Dashboard's Today's Workload cards) — relative
       // to now() rather than fixed dates, same as dashboard.test.ts's own workload fixture.
-      { fmsId: fmsA, recordId: 'w1', displayName: 'Due today', doer: 'Priya', recordStatus: 'RUNNING_ON_TIME', freshness: 'Fresh', planTime: hoursFromNow(2) },
+      { fmsId: fmsA, recordId: 'w1', displayName: 'Due today', doer: 'Priya', recordStatus: 'RUNNING_ON_TIME', freshness: 'Fresh', planTime: todayAtUTC(12) },
       { fmsId: fmsA, recordId: 'w2', displayName: 'Overdue from yesterday', doer: 'Priya', recordStatus: 'OVERDUE', freshness: 'Critical', planTime: hoursFromNow(-30) },
       { fmsId: fmsA, recordId: 'w3', displayName: 'Due tomorrow', doer: 'Priya', recordStatus: 'RUNNING_ON_TIME', freshness: 'Fresh', planTime: hoursFromNow(30) },
     ]);

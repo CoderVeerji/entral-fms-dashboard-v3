@@ -51,14 +51,19 @@ describeIfDb('dashboard routes (integration)', () => {
 
     const now = new Date();
     const hoursFromNow = (h: number) => new Date(now.getTime() + h * 3600000);
+    // Fixed UTC hours on today's date, not relative "+2h"/"-2h" offsets — a relative offset can
+    // cross the midnight boundary into yesterday/tomorrow depending on what wall-clock hour the CI
+    // run happens to execute at, making the "same day" assertions flaky. The ±30h ones below don't
+    // have this problem (safely more than a day from the boundary regardless of current time).
+    const todayAtUTC = (hour: number) => new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), hour, 0, 0));
     // d1: due earlier today, still open (Overdue (Before Today) must NOT count this — same day)
     // d2: due later today, still open (Due Today)
     // d3: due tomorrow (Upcoming)
     // d4: due yesterday, still open (Overdue (Before Today))
     // d5: no plan at all (NOT_STARTED) — must not land in any of the three buckets
     await db.insert(schema.records).values([
-      { fmsId: fmsA, recordId: 'd1', displayName: 'Due earlier today', recordStatus: 'OVERDUE', freshness: 'Fresh', planTime: hoursFromNow(-2) },
-      { fmsId: fmsA, recordId: 'd2', displayName: 'Due later today', recordStatus: 'RUNNING_ON_TIME', freshness: 'Fresh', planTime: hoursFromNow(2) },
+      { fmsId: fmsA, recordId: 'd1', displayName: 'Due earlier today', recordStatus: 'OVERDUE', freshness: 'Fresh', planTime: todayAtUTC(2) },
+      { fmsId: fmsA, recordId: 'd2', displayName: 'Due later today', recordStatus: 'RUNNING_ON_TIME', freshness: 'Fresh', planTime: todayAtUTC(20) },
       { fmsId: fmsA, recordId: 'd3', displayName: 'Due tomorrow', recordStatus: 'RUNNING_ON_TIME', freshness: 'Fresh', planTime: hoursFromNow(30) },
       { fmsId: fmsA, recordId: 'd4', displayName: 'Due yesterday', recordStatus: 'OVERDUE', freshness: 'Critical', planTime: hoursFromNow(-30) },
       { fmsId: fmsA, recordId: 'd5', displayName: 'No plan yet', recordStatus: 'NOT_STARTED', freshness: 'Never', planTime: null },
