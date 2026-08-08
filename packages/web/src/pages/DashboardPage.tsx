@@ -132,10 +132,10 @@ export function DashboardPage() {
             hi="Records jinke current step ki deadline aaj ki hai — chahe wo time aaj nikal chuka ho ya abhi aana baaki ho." />
         </div>
         <div onClick={() => navigate('liveRecords', { ...(fmsId ? { fmsId } : {}), workload: 'overdueBeforeToday' })} style={{ cursor: 'pointer', position: 'relative' }}>
-          <KpiCard icon="fa-calendar-xmark" color="red" value={kpi.overdueBeforeToday} label="Overdue (Before Today)" />
-          <HelpHotspot title="Overdue (Before Today)"
-            en="Records whose deadline was on some earlier date and are still not done — carried over from a previous day, not just today's list."
-            hi="Records jinki deadline kisi pehle wali date ki thi aur abhi tak complete nahi hue — pichle kisi din se carry over hue hain, sirf aaj ki list nahi." />
+          <KpiCard icon="fa-calendar-xmark" color="red" value={kpi.overdueBeforeToday} label="Yesterday Due" />
+          <HelpHotspot title="Yesterday Due"
+            en="Records whose deadline was on some earlier date (yesterday or before) and are still not done — carried over from a previous day, not just today's list. The Overdue card up top is different: it's every record whose deadline has passed, even by a few minutes today."
+            hi="Records jinki deadline kisi pehle wali date ki thi (kal ya usse pehle) aur abhi tak complete nahi hue — pichle kisi din se carry over hue hain, sirf aaj ki list nahi. Upar wala Overdue card alag hai: wo har record hai jiski deadline nikal chuki hai, chahe aaj hi kuch minute pehle kyun na nikli ho." />
         </div>
         <div onClick={() => navigate('liveRecords', { ...(fmsId ? { fmsId } : {}), workload: 'upcoming' })} style={{ cursor: 'pointer', position: 'relative' }}>
           <KpiCard icon="fa-calendar-plus" color="green" value={kpi.upcoming} label="Upcoming" />
