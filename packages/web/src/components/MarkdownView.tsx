@@ -35,7 +35,13 @@ const OL_RE = /^\s*\d+[.)]\s+(.*)/;
 const TABLE_SEP_RE = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/;
 
 export function MarkdownView({ text }: { text: string }) {
-  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  // The model occasionally emits an entire table (header, separator, every data row) as one
+  // unbroken line instead of real newlines between rows — a `| |` substring only ever occurs at
+  // exactly a row boundary (one row's trailing pipe touching the next row's leading pipe; a real
+  // cell's content sits between them everywhere else), so splitting there recovers the row
+  // structure regardless of whether the model bothered with newlines. Harmless no-op on an
+  // already-correct multi-line table (replacing "|\n|" with itself).
+  const lines = text.replace(/\r\n/g, '\n').replace(/\|\s*\|/g, '|\n|').split('\n');
   const blocks: ReactNode[] = [];
   let i = 0;
   let key = 0;
