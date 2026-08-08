@@ -32,6 +32,17 @@ recordsRoutes.get('/', requireAuth('records.view'), async (c) => {
     const d = new Date(q.dateTo);
     if (!Number.isNaN(d.getTime())) conditions.push(lte(records.planTime, d));
   }
+  // Drill-through from the Dashboard's Today's Workload cards — same exact date_trunc('day',
+  // now()) bucketing dashboard.ts uses for those cards' counts, computed server-side so the list
+  // here always matches the number that was clicked (a client-computed dateFrom/dateTo would drift
+  // against the server's UTC "today" whenever the browser's local day differs from it).
+  if (q.workload === 'dueToday') {
+    conditions.push(sql`${records.planTime} >= date_trunc('day', now()) and ${records.planTime} < date_trunc('day', now()) + interval '1 day'`);
+  } else if (q.workload === 'overdueBeforeToday') {
+    conditions.push(sql`${records.planTime} < date_trunc('day', now())`);
+  } else if (q.workload === 'upcoming') {
+    conditions.push(sql`${records.planTime} >= date_trunc('day', now()) + interval '1 day'`);
+  }
   if (q.search && q.search.trim()) {
     // Matches the gin_trgm_ops index built on this exact concatenated expression
     // (packages/db/migrations/0000_init.sql, idx_records_search_trgm) — searching displayName/

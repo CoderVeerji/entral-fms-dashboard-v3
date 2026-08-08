@@ -163,6 +163,7 @@ export interface RecordsQuery {
   search?: string;
   dateFrom?: string;
   dateTo?: string;
+  workload?: string;
   start?: number;
   length?: number;
 }

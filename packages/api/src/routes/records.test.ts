@@ -45,12 +45,19 @@ describeIfDb('records routes (integration)', () => {
       fullName: 'Test Records User', roleId: testRoleId, status: 'ACTIVE', mustChangePassword: false,
     });
 
+    const now = new Date();
+    const hoursFromNow = (h: number) => new Date(now.getTime() + h * 3600000);
     await db.insert(schema.records).values([
       { fmsId: fmsA, recordId: 'r1', displayName: 'Acme Corp', doer: 'Priya', recordStatus: 'OVERDUE', freshness: 'Stale', planTime: new Date('2026-08-01T00:00:00Z') },
       { fmsId: fmsA, recordId: 'r2', displayName: 'Beta Traders', doer: 'Ravi', recordStatus: 'COMPLETED_ON_TIME', freshness: 'Fresh', planTime: new Date('2026-08-02T00:00:00Z') },
       { fmsId: fmsA, recordId: 'r3', displayName: 'Gamma Foam House', doer: 'Priya', recordStatus: 'RUNNING_ON_TIME', freshness: 'Fresh', planTime: new Date('2026-08-03T00:00:00Z') },
       { fmsId: fmsA, recordId: 'r4', displayName: 'Archived Record', doer: 'Ravi', recordStatus: 'OVERDUE', freshness: 'Critical', isArchived: true },
       { fmsId: fmsB, recordId: 'r5', displayName: 'Other FMS Record', doer: 'Amit', recordStatus: 'OVERDUE', freshness: 'Stale' },
+      // For the workload= drill-through param (see Dashboard's Today's Workload cards) — relative
+      // to now() rather than fixed dates, same as dashboard.test.ts's own workload fixture.
+      { fmsId: fmsA, recordId: 'w1', displayName: 'Due today', doer: 'Priya', recordStatus: 'RUNNING_ON_TIME', freshness: 'Fresh', planTime: hoursFromNow(2) },
+      { fmsId: fmsA, recordId: 'w2', displayName: 'Overdue from yesterday', doer: 'Priya', recordStatus: 'OVERDUE', freshness: 'Critical', planTime: hoursFromNow(-30) },
+      { fmsId: fmsA, recordId: 'w3', displayName: 'Due tomorrow', doer: 'Priya', recordStatus: 'RUNNING_ON_TIME', freshness: 'Fresh', planTime: hoursFromNow(30) },
     ]);
     await db.insert(schema.stageEvents).values([
       { fmsId: fmsA, recordId: 'r1', stageIndex: 0, stageName: 'Invoicing', status: 'OVERDUE' },
@@ -85,8 +92,8 @@ describeIfDb('records routes (integration)', () => {
     expect(res.status).toBe(200);
     const body = await asJson(res);
     const ids = body.data.records.map((r: { recordId: string }) => r.recordId).sort();
-    expect(ids).toEqual(['r1', 'r2', 'r3']); // r4 archived, r5 other FMS — both excluded
-    expect(body.data.total).toBe(3);
+    expect(ids).toEqual(['r1', 'r2', 'r3', 'w1', 'w2', 'w3']); // r4 archived, r5 other FMS — both excluded
+    expect(body.data.total).toBe(6);
   });
 
   it('filters by status', async () => {
@@ -129,7 +136,20 @@ describeIfDb('records routes (integration)', () => {
     const res = await app.request(`/api/records?fmsId=${fmsA}&start=1&length=1`, auth(), env);
     const body = await asJson(res);
     expect(body.data.records).toHaveLength(1);
-    expect(body.data.total).toBe(3); // total reflects the full filtered set, not just this page
+    expect(body.data.total).toBe(6); // total reflects the full filtered set, not just this page
+  });
+
+  it('workload=dueToday/overdueBeforeToday/upcoming buckets by calendar date against now()', async () => {
+    const dueTodayRes = await app.request(`/api/records?fmsId=${fmsA}&workload=dueToday`, auth(), env);
+    expect((await asJson(dueTodayRes)).data.records.map((r: { recordId: string }) => r.recordId)).toEqual(['w1']);
+
+    const overdueRes = await app.request(`/api/records?fmsId=${fmsA}&workload=overdueBeforeToday`, auth(), env);
+    // r1/r2/r3's fixed 2026-08-0x planTimes are also in the past by the time this test ever runs,
+    // alongside w2 — every fixture record with a planTime except w1 (today) and w3 (tomorrow).
+    expect((await asJson(overdueRes)).data.records.map((r: { recordId: string }) => r.recordId).sort()).toEqual(['r1', 'r2', 'r3', 'w2']);
+
+    const upcomingRes = await app.request(`/api/records?fmsId=${fmsA}&workload=upcoming`, auth(), env);
+    expect((await asJson(upcomingRes)).data.records.map((r: { recordId: string }) => r.recordId)).toEqual(['w3']);
   });
 
   it('record detail returns the record plus its stage events in order', async () => {

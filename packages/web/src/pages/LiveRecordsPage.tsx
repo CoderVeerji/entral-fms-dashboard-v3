@@ -19,6 +19,9 @@ const STATUS_OPTIONS = [
   'COMPLETED_ON_TIME', 'COMPLETED_LATE', 'DATA_EXCEPTION',
 ];
 const FRESHNESS_OPTIONS = ['Fresh', 'Warning', 'Stale', 'Critical', 'Never'];
+const WORKLOAD_LABELS: Record<string, string> = {
+  dueToday: 'Due Today', overdueBeforeToday: 'Overdue (Before Today)', upcoming: 'Upcoming',
+};
 
 // Port of app/index.html's row-class logic — tints the whole row by status so a scan down the
 // table shows trouble at a glance, not just in the Status column's badge.
@@ -46,6 +49,10 @@ export function LiveRecordsPage() {
   const [doer, setDoer] = useState(navParams.doer ?? '');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  // 'dueToday' | 'overdueBeforeToday' | 'upcoming' — from Dashboard's Today's Workload cards.
+  // Cleared the moment the user touches the manual date inputs above (mutually exclusive with
+  // them on the API side), same "seed once, never fight the user's own filter changes" pattern.
+  const [workload, setWorkload] = useState(navParams.workload ?? '');
   const [stageOptions, setStageOptions] = useState<string[]>([]);
   const [doerOptions, setDoerOptions] = useState<string[]>([]);
   const [search, setSearch] = useState('');
@@ -78,16 +85,16 @@ export function LiveRecordsPage() {
     const res = await api.getRecords(token, {
       fmsId: fmsId || undefined, status: status || undefined, freshness: freshness || undefined,
       stage: stage || undefined, doer: doer || undefined, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined,
-      search: debouncedSearch || undefined, start: page * PAGE_SIZE, length: PAGE_SIZE,
+      workload: workload || undefined, search: debouncedSearch || undefined, start: page * PAGE_SIZE, length: PAGE_SIZE,
     });
     setLoading(false);
     if (!res.ok) { setError(res.message); return; }
     setRows(res.data.records);
     setTotal(res.data.total);
-  }, [token, fmsId, status, freshness, stage, doer, dateFrom, dateTo, debouncedSearch, page]);
+  }, [token, fmsId, status, freshness, stage, doer, dateFrom, dateTo, workload, debouncedSearch, page]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setPage(0); }, [fmsId, status, freshness, stage, doer, dateFrom, dateTo, debouncedSearch]);
+  useEffect(() => { setPage(0); }, [fmsId, status, freshness, stage, doer, dateFrom, dateTo, workload, debouncedSearch]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -133,16 +140,28 @@ export function LiveRecordsPage() {
         </select>
         <label className="filter-date-label">
           From
-          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+          <input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setWorkload(''); }} />
         </label>
         <label className="filter-date-label">
           To
-          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+          <input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setWorkload(''); }} />
         </label>
         <button className="btn btn-outline btn-sm no-print" disabled={rows.length === 0} onClick={exportRows}>
           <i className="fas fa-file-csv" /> Export Page CSV
         </button>
       </div>
+
+      {/* Active from a Dashboard "Today's Workload" card click-through — a real filter (same
+          date_trunc('day', now()) bucketing as the card's own count), not just a label, so it's
+          shown as a dismissible chip rather than silently baked into the date inputs above. */}
+      {workload && WORKLOAD_LABELS[workload] && (
+        <div className="filter-chip-bar">
+          <span className="filter-chip">
+            {WORKLOAD_LABELS[workload]}
+            <i className="fas fa-xmark" onClick={() => setWorkload('')} />
+          </span>
+        </div>
+      )}
 
       {error && <div className="login-error">{error}</div>}
 

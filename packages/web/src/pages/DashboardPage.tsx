@@ -123,19 +123,19 @@ export function DashboardPage() {
           hi="Har record jiska real deadline hai, status ki jagah calendar date ke hisab se group kiya gaya hai — upar wale status cards se ek simple sawaal: aaj kya due hai, aaj se pehle ka kya miss ho chuka hai, aur aage kya aane wala hai. Jo record aaj subah 9 baje due tha aur abhi bhi khula hai, wo yahan 'Due Today' mein ginega chahe upar wo already Overdue ho — ye date wala view hai, status wala nahi." />
       </div>
       <div className="grid grid-cols-3" style={{ marginBottom: 22 }}>
-        <div onClick={() => navigate('liveRecords', fmsId ? { fmsId } : {})} style={{ cursor: 'pointer', position: 'relative' }}>
+        <div onClick={() => navigate('liveRecords', { ...(fmsId ? { fmsId } : {}), workload: 'dueToday' })} style={{ cursor: 'pointer', position: 'relative' }}>
           <KpiCard icon="fa-calendar-check" color="blue" value={kpi.dueToday} label="Due Today" />
           <HelpHotspot title="Due Today"
             en="Records whose current step's deadline falls today — whether that time has already passed today or is still ahead."
             hi="Records jinke current step ki deadline aaj ki hai — chahe wo time aaj nikal chuka ho ya abhi aana baaki ho." />
         </div>
-        <div onClick={() => navigate('liveRecords', fmsId ? { fmsId } : {})} style={{ cursor: 'pointer', position: 'relative' }}>
+        <div onClick={() => navigate('liveRecords', { ...(fmsId ? { fmsId } : {}), workload: 'overdueBeforeToday' })} style={{ cursor: 'pointer', position: 'relative' }}>
           <KpiCard icon="fa-calendar-xmark" color="red" value={kpi.overdueBeforeToday} label="Overdue (Before Today)" />
           <HelpHotspot title="Overdue (Before Today)"
             en="Records whose deadline was on some earlier date and are still not done — carried over from a previous day, not just today's list."
             hi="Records jinki deadline kisi pehle wali date ki thi aur abhi tak complete nahi hue — pichle kisi din se carry over hue hain, sirf aaj ki list nahi." />
         </div>
-        <div onClick={() => navigate('liveRecords', fmsId ? { fmsId } : {})} style={{ cursor: 'pointer', position: 'relative' }}>
+        <div onClick={() => navigate('liveRecords', { ...(fmsId ? { fmsId } : {}), workload: 'upcoming' })} style={{ cursor: 'pointer', position: 'relative' }}>
           <KpiCard icon="fa-calendar-plus" color="green" value={kpi.upcoming} label="Upcoming" />
           <HelpHotspot title="Upcoming"
             en="Records whose deadline is on some future date — not due yet, nothing to do right now."
