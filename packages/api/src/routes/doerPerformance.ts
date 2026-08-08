@@ -18,7 +18,7 @@ import type { Variables } from '../types';
 // they actually finished.
 export const doerPerformanceRoutes = new Hono<{ Variables: Variables }>();
 
-interface DoerRollup {
+export interface DoerRollup {
   doerName: string;
   email: string;
   fmsIds: Set<string>;
@@ -34,7 +34,27 @@ interface DoerRollup {
   staleRecords: number;
 }
 
-function rollupDoerBuckets(perFms: { fmsId: string; buckets: FinalizedBucket[] }[]) {
+// Shared with the AI Assistant's get_doer_performance tool (packages/api/src/ai/tools.ts) — one
+// scoring formula, not a second copy that could drift from what DoerPerformancePage.tsx shows.
+export function scoreDoerRollup(d: DoerRollup) {
+  const onTimeRate = scoreOrNull(safeRatio(d.onTime, d.completed));
+  const avgDelayMinutes = d.delayEvents ? Math.round(d.totalDelayMinutes / d.delayEvents) : null;
+  const latenessPenalty = computeLatenessPenalty(avgDelayMinutes);
+  const overdueRate = d.assigned ? scoreOrNull(100 - (safeRatio(d.overdue, d.assigned) ?? 0)) : null;
+
+  const w = SCORING.DOER_WEIGHTS;
+  const parts: number[] = [];
+  let weightSum = 0;
+  if (onTimeRate !== null) { parts.push(onTimeRate * w.onTimeRate); weightSum += w.onTimeRate; }
+  if (latenessPenalty !== null) { parts.push(latenessPenalty * w.latenessPenalty); weightSum += w.latenessPenalty; }
+  if (overdueRate !== null) { parts.push(overdueRate * w.overdueRate); weightSum += w.overdueRate; }
+  const performanceScore = d.completed === 0 || weightSum === 0 ? null
+    : scoreOrNull(parts.reduce((a, b) => a + b, 0) / weightSum);
+
+  return { onTimeRate, avgDelayMinutes, overdueRate, performanceScore };
+}
+
+export function rollupDoerBuckets(perFms: { fmsId: string; buckets: FinalizedBucket[] }[]) {
   const doerMap = new Map<string, DoerRollup>();
   for (const { fmsId, buckets } of perFms) {
     for (const b of buckets) {
@@ -101,24 +121,11 @@ doerPerformanceRoutes.get('/', requireAuth('reports.view'), async (c) => {
   }
 
   const rows = Array.from(doerMap.values()).map((d) => {
-    const onTimeRate = scoreOrNull(safeRatio(d.onTime, d.completed));
-    const avgDelay = d.delayEvents ? Math.round(d.totalDelayMinutes / d.delayEvents) : null;
-    const latenessPenalty = computeLatenessPenalty(avgDelay);
-    const overdueRate = d.assigned ? scoreOrNull(100 - (safeRatio(d.overdue, d.assigned) ?? 0)) : null;
-
-    const w = SCORING.DOER_WEIGHTS;
-    const parts: number[] = [];
-    let weightSum = 0;
-    if (onTimeRate !== null) { parts.push(onTimeRate * w.onTimeRate); weightSum += w.onTimeRate; }
-    if (latenessPenalty !== null) { parts.push(latenessPenalty * w.latenessPenalty); weightSum += w.latenessPenalty; }
-    if (overdueRate !== null) { parts.push(overdueRate * w.overdueRate); weightSum += w.overdueRate; }
-    const performanceScore = d.completed === 0 || weightSum === 0 ? null
-      : scoreOrNull(parts.reduce((a, b) => a + b, 0) / weightSum);
-
+    const { avgDelayMinutes, performanceScore } = scoreDoerRollup(d);
     return {
       doerName: d.doerName, email: d.email, fmsCount: d.fmsIds.size, assignedStages: d.assigned,
       completed: d.completed, onTime: d.onTime, late: d.late, pending: d.pending, overdue: d.overdue, stalled: d.stalled,
-      avgDelayMinutes: avgDelay, staleRecords: d.staleRecords,
+      avgDelayMinutes, staleRecords: d.staleRecords,
       openActions: openActionsByEmail.get(d.email.toLowerCase()) ?? 0, performanceScore,
     };
   });

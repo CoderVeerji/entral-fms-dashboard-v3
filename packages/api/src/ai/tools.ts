@@ -3,6 +3,7 @@ import { fmsMaster, fmsEvalCache, records, dataHealthCache } from '@fms/db';
 import type { AggregateTotals, FinalizedBucket } from '@fms/core';
 import type { Db } from '../db';
 import type { GroqTool } from './groq';
+import { rollupDoerBuckets, scoreDoerRollup } from '../routes/doerPerformance';
 
 // Every tool here is read-only and wraps the SAME data the dashboard's own pages already show
 // (fms_eval_cache, records, data_health_cache — all computed by packages/sync, not re-derived
@@ -45,6 +46,16 @@ export const AI_TOOLS: GroqTool[] = [
     description: 'Automatic data-quality issues found across all connected FMS (duplicate record IDs, suspicious/likely-wrong dates, negative delays) — a sign the source spreadsheet itself has a problem, not just a slow record.',
     parameters: { type: 'object', properties: {} },
   },
+  {
+    name: 'get_doer_performance',
+    description: 'A specific person\'s (or everyone\'s) timeliness performance across all FMS: on-time rate, average delay when late, overdue rate, and the resulting performance score (judged purely on timeliness, never on how much work they were assigned). Use this for any "how is X doing" / "X ki performance" / "who is the best/worst performer" question — not search_records or get_bottleneck_summary, which don\'t carry a performance score.',
+    parameters: {
+      type: 'object',
+      properties: {
+        doerName: { type: 'string', description: 'Partial or full name to match (case-insensitive). Omit to return everyone, best performers first.' },
+      },
+    },
+  },
 ];
 
 export async function runAiTool(db: Db, name: string, args: Record<string, unknown>): Promise<unknown> {
@@ -53,6 +64,7 @@ export async function runAiTool(db: Db, name: string, args: Record<string, unkno
     case 'search_records': return searchRecords(db, args);
     case 'get_bottleneck_summary': return getBottleneckSummary(db, args);
     case 'get_data_health_issues': return getDataHealthIssues(db);
+    case 'get_doer_performance': return getDoerPerformance(db, args);
     default: return { error: `Unknown tool "${name}".` };
   }
 }
@@ -114,4 +126,38 @@ async function getBottleneckSummary(db: Db, args: Record<string, unknown>) {
 async function getDataHealthIssues(db: Db) {
   const [row] = await db.select().from(dataHealthCache).where(eq(dataHealthCache.id, 1)).limit(1);
   return { checkedAt: row?.checkedAt ? row.checkedAt.toISOString() : null, issueCount: row?.issueCount ?? 0, issues: row?.issues ?? [] };
+}
+
+// Reuses doerPerformance.ts's own rollup/scoring (same numbers DoerPerformancePage.tsx shows) —
+// all-time only (no date-range param exposed to the model yet; the route's live-recompute branch
+// is a bigger cost than a chat tool call should take on).
+async function getDoerPerformance(db: Db, args: Record<string, unknown>) {
+  const configs = await db.select().from(fmsMaster).where(and(eq(fmsMaster.isDeleted, false), eq(fmsMaster.active, true)));
+  if (!configs.length) return [];
+  const evalRows = await db.select().from(fmsEvalCache).where(inArray(fmsEvalCache.fmsId, configs.map((c) => c.fmsId)));
+  const evalByFmsId = new Map(evalRows.map((r) => [r.fmsId, r]));
+  const perFms = configs.map((c) => ({
+    fmsId: c.fmsId,
+    buckets: (evalByFmsId.get(c.fmsId)?.doerBottlenecks as FinalizedBucket[] | null) ?? [],
+  }));
+
+  const doerMap = rollupDoerBuckets(perFms);
+  const nameFilter = typeof args.doerName === 'string' && args.doerName.trim() ? args.doerName.trim().toLowerCase() : null;
+
+  const rows = Array.from(doerMap.values())
+    .filter((d) => !nameFilter || d.doerName.toLowerCase().includes(nameFilter))
+    .map((d) => {
+      const { onTimeRate, avgDelayMinutes, overdueRate, performanceScore } = scoreDoerRollup(d);
+      return {
+        doerName: d.doerName, fmsCount: d.fmsIds.size, assignedStages: d.assigned, completed: d.completed,
+        onTime: d.onTime, late: d.late, pending: d.pending, overdue: d.overdue, stalled: d.stalled,
+        onTimeRate, avgDelayMinutes, overdueRate, performanceScore,
+      };
+    });
+  rows.sort((a, b) => (b.performanceScore ?? -1) - (a.performanceScore ?? -1));
+
+  if (nameFilter && !rows.length) {
+    return { error: `No doer matching "${args.doerName}" found in any connected FMS's recent activity.` };
+  }
+  return nameFilter ? rows : rows.slice(0, 15);
 }
