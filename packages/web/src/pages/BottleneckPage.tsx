@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState, useCallback, type MouseEvent } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useNavigation } from '../context/NavigationContext';
 import * as api from '../api';
 import type { FmsConfig, BottleneckBucket, BottleneckDetailRow } from '../api';
 import { Modal } from '../components/Modal';
@@ -157,8 +158,12 @@ function BucketTable({ rows, keyLabel, onDrill }: {
 
 export function BottleneckPage() {
   const { token } = useAuth();
+  // Seeds fmsId from a cross-page jump (e.g. the Dashboard's Top Bottleneck Stages table) via
+  // useNavigation().params — same pattern as LiveRecordsPage/UpdateHealthPage — read once on
+  // mount only, so the user's own subsequent filter changes here are never silently overwritten.
+  const { params: navParams } = useNavigation();
   const [fmsList, setFmsList] = useState<FmsConfig[]>([]);
-  const [fmsId, setFmsId] = useState('');
+  const [fmsId, setFmsId] = useState(navParams.fmsId ?? '');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [view, setView] = useState<'stage' | 'doer'>('stage');

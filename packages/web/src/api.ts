@@ -218,6 +218,8 @@ export interface DashboardKpi {
   dueToday: number;
   overdueBeforeToday: number;
   upcoming: number;
+  completedToday: number;
+  openActions: number;
 }
 
 export interface FmsHealth {
@@ -230,6 +232,7 @@ export interface FmsHealth {
   atRiskRecords?: number;
   stalledRecords?: number;
   healthBadge: 'green' | 'amber' | 'red' | 'grey';
+  currentBottleneck?: string | null;
 }
 
 export interface DashboardFreshness {
@@ -256,7 +259,10 @@ export interface NeedsAttentionEntry {
 
 export function getDashboard(token: string, fmsId?: string) {
   const params = fmsId ? `?fmsId=${encodeURIComponent(fmsId)}` : '';
-  return request<{ kpi: DashboardKpi; fmsHealth: FmsHealth[]; freshness: DashboardFreshness; needsAttention: NeedsAttentionEntry[] }>(
+  return request<{
+    kpi: DashboardKpi; fmsHealth: FmsHealth[]; freshness: DashboardFreshness;
+    needsAttention: NeedsAttentionEntry[]; topBottleneckStages: BottleneckBucket[];
+  }>(
     `/api/dashboard${params}`, {}, token,
   );
 }

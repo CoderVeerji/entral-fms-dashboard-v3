@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, type FormEvent } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useNavigation } from '../context/NavigationContext';
 import { useToast } from '../context/ToastContext';
 import { useConfirm } from '../components/ConfirmDialog';
 import * as api from '../api';
@@ -190,8 +191,13 @@ function ActionRow({ action, onChanged }: { action: ActionItem; onChanged: () =>
 
 export function ActionCenterPage() {
   const { token } = useAuth();
+  // Seeds fmsId from a cross-page jump (e.g. the Dashboard's Open Actions card) via
+  // useNavigation().params — same pattern as LiveRecordsPage/UpdateHealthPage/BottleneckPage —
+  // read once on mount only, so the user's own subsequent filter changes here are never silently
+  // overwritten.
+  const { params: navParams } = useNavigation();
   const [fmsList, setFmsList] = useState<FmsConfig[]>([]);
-  const [fmsId, setFmsId] = useState('');
+  const [fmsId, setFmsId] = useState(navParams.fmsId ?? '');
   const [status, setStatus] = useState('');
   const [priority, setPriority] = useState('');
   const [search, setSearch] = useState('');

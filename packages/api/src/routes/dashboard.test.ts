@@ -6,6 +6,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { eq } from 'drizzle-orm';
 import * as schema from '@fms/db';
+import type { FinalizedBucket } from '@fms/core';
 import app from '../index';
 import { generateId, generateSalt, hashPassword } from '../crypto';
 
@@ -49,6 +50,30 @@ describeIfDb('dashboard routes (integration)', () => {
       statusCacheSheetName: 'Status_Cache', active: true, isDeleted: false,
     });
 
+    // For completedToday/currentBottleneck/topBottleneckStages — stageBottlenecks is stored
+    // pre-sorted by bottleneckScore descending (see packages/sync/src/upsert.ts), so the fixture
+    // is deliberately given in that order too, matching real data shape.
+    const stageBucket = (overrides: Partial<FinalizedBucket>): FinalizedBucket => ({
+      key: 'Invoicing', doerName: '', doerEmail: '', assigned: 5, completed: 2, onTime: 1, late: 1,
+      pending: 3, overdue: 2, stalled: 0, avgDelayMinutes: 60, avgDelayHuman: '1h', maxDelayMinutes: 60,
+      maxDelayHuman: '1h', onTimePercent: 50, dataExceptions: 0, criticalStale: 0, totalDelayDays: 0.1,
+      bottleneckScore: 10.1, reason: 'test', ...overrides,
+    });
+    await db.insert(schema.fmsEvalCache).values({
+      fmsId: fmsA, computedAt: new Date(), completedToday: 3,
+      // fmsHealth's row must have `totals` or dashboard.ts treats it as "Not synced yet" and skips
+      // it entirely (including completedToday/stageBottlenecks) — see that route's early return.
+      totals: { total: 5, runningOnTime: 1, atRisk: 0, overdue: 2, stalled: 0, completedOnTime: 1, completedLate: 1, dataException: 0, staleRecords: 0 },
+      scores: { overall: 72 },
+      stageBottlenecks: [stageBucket({ key: 'Invoicing', bottleneckScore: 10.1 }), stageBucket({ key: 'Dispatch', bottleneckScore: 4.2 })],
+    });
+
+    await db.insert(schema.actionItems).values([
+      { actionId: generateId('act'), fmsId: fmsA, actionType: 'Follow-up', priority: 'High', title: 'Open one', status: 'Open' },
+      { actionId: generateId('act'), fmsId: fmsA, actionType: 'Follow-up', priority: 'Low', title: 'In progress one', status: 'In Progress' },
+      { actionId: generateId('act'), fmsId: fmsA, actionType: 'Follow-up', priority: 'Low', title: 'Resolved one', status: 'Resolved' },
+    ]);
+
     const now = new Date();
     const hoursFromNow = (h: number) => new Date(now.getTime() + h * 3600000);
     // Fixed UTC hours on today's date, not relative "+2h"/"-2h" offsets — a relative offset can
@@ -77,6 +102,8 @@ describeIfDb('dashboard routes (integration)', () => {
   });
 
   afterAll(async () => {
+    await db.delete(schema.actionItems).where(eq(schema.actionItems.fmsId, fmsA));
+    await db.delete(schema.fmsEvalCache).where(eq(schema.fmsEvalCache.fmsId, fmsA));
     await db.delete(schema.records).where(eq(schema.records.fmsId, fmsA));
     await db.delete(schema.fmsMaster).where(eq(schema.fmsMaster.fmsId, fmsA));
     await db.delete(schema.sessions).where(eq(schema.sessions.userId, testUserId));
@@ -101,5 +128,30 @@ describeIfDb('dashboard routes (integration)', () => {
     expect(body.data.kpi.dueToday).toBe(2);
     expect(body.data.kpi.overdueBeforeToday).toBe(1);
     expect(body.data.kpi.upcoming).toBe(1);
+  });
+
+  it('reads completedToday from fms_eval_cache', async () => {
+    const res = await app.request(`/api/dashboard?fmsId=${fmsA}`, auth(), env);
+    const body = await asJson(res);
+    expect(body.data.kpi.completedToday).toBe(3);
+  });
+
+  it('counts open actions (not Resolved/Cancelled)', async () => {
+    const res = await app.request(`/api/dashboard?fmsId=${fmsA}`, auth(), env);
+    const body = await asJson(res);
+    expect(body.data.kpi.openActions).toBe(2); // Open + In Progress, not the Resolved one
+  });
+
+  it("each FMS Health row carries its current (worst) bottleneck stage", async () => {
+    const res = await app.request(`/api/dashboard?fmsId=${fmsA}`, auth(), env);
+    const body = await asJson(res);
+    const fms = body.data.fmsHealth.find((f: { fmsId: string }) => f.fmsId === fmsA);
+    expect(fms.currentBottleneck).toBe('Invoicing'); // highest bottleneckScore in the fixture
+  });
+
+  it('topBottleneckStages is sorted worst-first across FMS', async () => {
+    const res = await app.request(`/api/dashboard?fmsId=${fmsA}`, auth(), env);
+    const body = await asJson(res);
+    expect(body.data.topBottleneckStages.map((b: { key: string }) => b.key)).toEqual(['Invoicing', 'Dispatch']);
   });
 });

@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
-import { and, eq, inArray, sql } from 'drizzle-orm';
-import { fmsMaster, fmsEvalCache, records } from '@fms/db';
-import { ok } from '@fms/core';
+import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
+import { fmsMaster, fmsEvalCache, records, actionItems } from '@fms/db';
+import { ok, type FinalizedBucket } from '@fms/core';
 import { requireAuth } from '../middleware/auth';
 import type { Variables } from '../types';
 
@@ -42,8 +42,14 @@ dashboardRoutes.get('/', requireAuth('dashboard.view'), async (c) => {
   const kpi = {
     totalActiveFms: configs.length, totalActiveRecords: 0, runningOnTime: 0, atRisk: 0,
     overdue: 0, stalled: 0, completedOnTime: 0, completedLate: 0, dataExceptions: 0, staleRecords: 0,
-    dueToday: 0, overdueBeforeToday: 0, upcoming: 0,
+    dueToday: 0, overdueBeforeToday: 0, upcoming: 0, completedToday: 0, openActions: 0,
   };
+
+  // Every FMS's top bottleneck stage, merged and re-sorted — same "read the already-sorted cache,
+  // never recompute live" principle as fmsHealth/needsAttention below. stage_bottlenecks is stored
+  // pre-sorted by bottleneckScore descending (see packages/sync/src/upsert.ts), so [0] is always
+  // that FMS's worst stage without needing to re-sort per FMS.
+  const topBottleneckStages: (FinalizedBucket & { fmsId: string; fmsName: string })[] = [];
 
   const fmsHealth = configs.map((config) => {
     const row = evalByFmsId.get(config.fmsId);
@@ -52,6 +58,7 @@ dashboardRoutes.get('/', requireAuth('dashboard.view'), async (c) => {
     }
     const totals = row.totals as EvalTotals;
     const scores = (row.scores as EvalScores) || { overall: null };
+    const stageBottlenecks = (row.stageBottlenecks as FinalizedBucket[] | null) ?? [];
 
     kpi.totalActiveRecords += totals.total;
     kpi.runningOnTime += totals.runningOnTime;
@@ -62,14 +69,29 @@ dashboardRoutes.get('/', requireAuth('dashboard.view'), async (c) => {
     kpi.completedLate += totals.completedLate;
     kpi.dataExceptions += totals.dataException;
     kpi.staleRecords += totals.staleRecords;
+    kpi.completedToday += row.completedToday ?? 0;
+    stageBottlenecks.forEach((b) => topBottleneckStages.push({ ...b, fmsId: config.fmsId, fmsName: config.fmsName }));
 
     const healthBadge = (totals.overdue > 0 || totals.stalled > 0) ? 'red' : (totals.atRisk > 0 ? 'amber' : 'green');
     return {
       fmsId: config.fmsId, fmsName: config.fmsName, error: null, overallScore: scores.overall,
       activeRecords: totals.total, overdueRecords: totals.overdue, atRiskRecords: totals.atRisk,
       stalledRecords: totals.stalled, computedAt: row.computedAt, healthBadge,
+      currentBottleneck: stageBottlenecks[0]?.key ?? null,
     };
   });
+
+  topBottleneckStages.sort((a, b) => b.bottleneckScore - a.bottleneckScore);
+
+  // Open Actions — company-wide (or FMS-scoped) count of action items still needing attention,
+  // same "not resolved/cancelled" definition doerPerformance.ts's own open-actions query already
+  // uses (see that file's beforeAll comment for why "not in" rather than an allowlist).
+  if (configs.length) {
+    const fmsIds = configs.map((c2) => c2.fmsId);
+    const [openActionsRow] = await db.select({ count: sql<number>`count(*)` }).from(actionItems)
+      .where(and(eq(actionItems.isDeleted, false), inArray(actionItems.fmsId, fmsIds), notInArray(actionItems.status, ['Resolved', 'Cancelled'])));
+    kpi.openActions = Number(openActionsRow?.count ?? 0);
+  }
 
   // Freshness breakdown — full 5-bucket split, live indexed GROUP BY (see header comment).
   // NOT_STARTED (current stage has no plan time — see FMS_Status_Publisher.gs's evaluateRecord_)
@@ -125,5 +147,8 @@ dashboardRoutes.get('/', requireAuth('dashboard.view'), async (c) => {
   });
   needsAttention.sort((a, b) => (b.delay?.minutes ?? 0) - (a.delay?.minutes ?? 0));
 
-  return c.json(ok({ kpi, fmsHealth, freshness, needsAttention: needsAttention.slice(0, 20) }));
+  return c.json(ok({
+    kpi, fmsHealth, freshness, needsAttention: needsAttention.slice(0, 20),
+    topBottleneckStages: topBottleneckStages.slice(0, 5),
+  }));
 });

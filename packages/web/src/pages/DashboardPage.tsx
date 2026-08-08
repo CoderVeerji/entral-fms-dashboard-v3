@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import * as api from '../api';
-import type { DashboardKpi, FmsHealth, DashboardFreshness, NeedsAttentionEntry, FmsConfig, DoerPerformanceRow } from '../api';
+import type { DashboardKpi, FmsHealth, DashboardFreshness, NeedsAttentionEntry, FmsConfig, DoerPerformanceRow, BottleneckBucket } from '../api';
 import { KpiCard } from '../components/KpiCard';
 import { SkeletonBlock } from '../components/SkeletonBlock';
 import { ChartCard } from '../components/ChartCard';
@@ -22,6 +22,7 @@ export function DashboardPage() {
   const [fmsHealth, setFmsHealth] = useState<FmsHealth[]>([]);
   const [freshness, setFreshness] = useState<DashboardFreshness | null>(null);
   const [needsAttention, setNeedsAttention] = useState<NeedsAttentionEntry[]>([]);
+  const [topBottleneckStages, setTopBottleneckStages] = useState<BottleneckBucket[]>([]);
   const [doerRows, setDoerRows] = useState<DoerPerformanceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +47,7 @@ export function DashboardPage() {
     setFmsHealth(res.data.fmsHealth);
     setFreshness(res.data.freshness);
     setNeedsAttention(res.data.needsAttention);
+    setTopBottleneckStages(res.data.topBottleneckStages);
     // Doer Snapshot is a secondary widget — a permission gap or transient failure on this call
     // shouldn't blank the whole Dashboard, just leave the snapshot empty.
     setDoerRows(doerRes.ok ? doerRes.data : []);
@@ -143,19 +145,36 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {freshness && (
-        <div onClick={() => navigate('updateHealth', fmsId ? { fmsId } : {})} style={{ cursor: 'pointer', position: 'relative' }}>
-          <div className="section-title">
-            <i className="fas fa-bolt" />Data Freshness
-            <HelpHotspot inline title="Data Freshness"
-              en="How recently each record was last touched — this is about activity, not deadlines. A record can be 'Running On Time' above and still count here if nobody has updated it in a while. Click through to Update Health for the full breakdown by how long."
-              hi="Har record ko last kab touch kiya gaya — ye deadline ke baare mein nahi hai, activity ke baare mein hai. Ek record 'Running On Time' bhi ho sakta hai aur yahan bhi gin sakta hai agar koi update nahi aaya. Poora breakdown (kitne din se) dekhne ke liye Update Health pe click karo." />
-          </div>
-          <KpiCard icon="fa-magnifying-glass" color="amber"
-            value={freshness.warning + freshness.stale + freshness.critical + freshness.never}
-            label="Needs a Check (Warning + Stale + Critical + Never Updated)" />
+      <div className="section-title">
+        <i className="fas fa-star" />Today at a Glance
+        <HelpHotspot inline title="Today at a Glance"
+          en="Three quick signals: how much got finished today, how much work is still open across the company, and how many records need a fresh check (haven't been touched in a while)."
+          hi="Teen quick signals: aaj kitna kaam complete hua, poori company mein abhi kitna kaam open hai, aur kitne records ko fresh check chahiye (kaafi time se touch nahi hue)." />
+      </div>
+      <div className="grid grid-cols-3" style={{ marginBottom: 22 }}>
+        <div onClick={() => navigate('liveRecords', { ...(fmsId ? { fmsId } : {}), status: 'COMPLETED_ON_TIME' })} style={{ cursor: 'pointer', position: 'relative' }}>
+          <KpiCard icon="fa-circle-check" color="green" value={kpi.completedToday} label="Completed Today" />
+          <HelpHotspot title="Completed Today"
+            en="Records whose current stage was finished today, across every connected FMS."
+            hi="Records jinka current stage aaj complete hua, saari connected FMS mein se." />
         </div>
-      )}
+        <div onClick={() => navigate('actionCenter', fmsId ? { fmsId } : {})} style={{ cursor: 'pointer', position: 'relative' }}>
+          <KpiCard icon="fa-list-check" color="blue" value={kpi.openActions} label="Open Actions" />
+          <HelpHotspot title="Open Actions"
+            en="Action items still open (not Resolved or Cancelled) across every connected FMS — click through to Action Center to work through them."
+            hi="Action items jo abhi bhi open hain (Resolved ya Cancelled nahi) — saari connected FMS mein se. Action Center pe click karke inpe kaam karo." />
+        </div>
+        {freshness && (
+          <div onClick={() => navigate('updateHealth', fmsId ? { fmsId } : {})} style={{ cursor: 'pointer', position: 'relative' }}>
+            <KpiCard icon="fa-magnifying-glass" color="amber"
+              value={freshness.warning + freshness.stale + freshness.critical + freshness.never}
+              label="Needs a Check" />
+            <HelpHotspot title="Needs a Check"
+              en="Records that haven't been touched in a while (Warning/Stale/Critical/Never Updated) — this is about activity, not deadlines. A record can be 'Running On Time' above and still count here. Click through to Update Health for the full breakdown by how long."
+              hi="Records jo kaafi time se touch nahi hue (Warning/Stale/Critical/Never Updated) — ye deadline ke baare mein nahi hai, activity ke baare mein hai. Ek record 'Running On Time' bhi ho sakta hai aur yahan bhi gin sakta hai. Poora breakdown Update Health pe dekho." />
+          </div>
+        )}
+      </div>
 
       <div className="section-title">
         <i className="fas fa-heart-pulse" />FMS Health
@@ -200,6 +219,11 @@ export function DashboardPage() {
                     {f.atRiskRecords} at risk
                   </span>
                 </div>
+                {f.currentBottleneck && (
+                  <div style={{ fontSize: 11.5, color: 'var(--text-soft)', marginTop: 6 }}>
+                    <i className="fas fa-triangle-exclamation" style={{ marginRight: 4 }} />Worst stage: <b>{f.currentBottleneck}</b>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -209,6 +233,36 @@ export function DashboardPage() {
             No connected FMS yet.
           </div>
         )}
+      </div>
+
+      <div className="section-title">
+        <i className="fas fa-fire" />Top Bottleneck Stages
+        <HelpHotspot inline title="Top Bottleneck Stages"
+          en="The worst stages right now, across every connected FMS — ranked by the same internal severity score Bottleneck Analysis uses (overdue/stalled/late weighted, not a percentage — see that page for the full explanation). Click a row to see every stage/doer bucket for that FMS."
+          hi="Abhi ke sabse kharab stages, saari connected FMS mein se — Bottleneck Analysis wale hi internal severity score se rank kiya gaya hai (overdue/stalled/late ko weight diya gaya hai, percentage nahi — poora explanation us page pe hai). Row pe click karke us FMS ke saare stage/doer buckets dekho." />
+      </div>
+      <div className="table-scroll" style={{ marginBottom: 22 }}>
+        <table className="records-table">
+          <thead>
+            <tr><th>Stage</th><th>FMS</th><th>Overdue</th><th>Stalled</th><th>Completed Late</th><th>On-Time %</th><th></th></tr>
+          </thead>
+          <tbody>
+            {topBottleneckStages.map((b, i) => (
+              <tr key={i} className="row-clickable" onClick={() => navigate('bottlenecks', { fmsId: b.fmsId })}>
+                <td>{b.key}</td>
+                <td>{b.fmsName}</td>
+                <td>{b.overdue}</td>
+                <td>{b.stalled}</td>
+                <td>{b.late}</td>
+                <td>{b.onTimePercent != null ? `${b.onTimePercent}%` : '—'}</td>
+                <td className="row-view-cell" title="View in Bottleneck Analysis"><i className="fas fa-eye" /></td>
+              </tr>
+            ))}
+            {topBottleneckStages.length === 0 && (
+              <tr><td colSpan={7} style={{ padding: 0 }}><EmptyState icon="fa-circle-check" title="No bottleneck activity right now" /></td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
       <div className="section-title">
