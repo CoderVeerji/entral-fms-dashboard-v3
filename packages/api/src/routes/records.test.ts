@@ -104,19 +104,22 @@ describeIfDb('records routes (integration)', () => {
   it('filters by status', async () => {
     const res = await app.request(`/api/records?fmsId=${fmsA}&status=OVERDUE`, auth(), env);
     const body = await asJson(res);
-    expect(body.data.records.map((r: { recordId: string }) => r.recordId)).toEqual(['r1']);
+    // w2 (the workload fixture's "overdue from yesterday" record) is also OVERDUE
+    expect(body.data.records.map((r: { recordId: string }) => r.recordId).sort()).toEqual(['r1', 'w2']);
   });
 
   it('filters by doer', async () => {
     const res = await app.request(`/api/records?fmsId=${fmsA}&doer=Priya`, auth(), env);
     const body = await asJson(res);
-    expect(body.data.records.map((r: { recordId: string }) => r.recordId).sort()).toEqual(['r1', 'r3']);
+    // w1/w2/w3 (the workload fixture) are also doer=Priya
+    expect(body.data.records.map((r: { recordId: string }) => r.recordId).sort()).toEqual(['r1', 'r3', 'w1', 'w2', 'w3']);
   });
 
   it('filters by freshness', async () => {
     const res = await app.request(`/api/records?fmsId=${fmsA}&freshness=Fresh`, auth(), env);
     const body = await asJson(res);
-    expect(body.data.records.map((r: { recordId: string }) => r.recordId).sort()).toEqual(['r2', 'r3']);
+    // w1/w3 (the workload fixture) are also freshness=Fresh; w2 is Critical
+    expect(body.data.records.map((r: { recordId: string }) => r.recordId).sort()).toEqual(['r2', 'r3', 'w1', 'w3']);
   });
 
   it('search matches display name substring (case-insensitive)', async () => {
