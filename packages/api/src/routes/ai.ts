@@ -79,16 +79,25 @@ aiRoutes.post('/chat', requireAuth('ai.chat'), async (c) => {
 });
 
 // One retry, after the provider's own suggested wait if given (capped) — matches REBUILD_PLAN's
-// "no retry storms" principle: a single bounded retry for a transient rate limit, not a loop.
+// "no retry storms" principle: a single bounded retry, not a loop. Covers rate limits (429),
+// transient upstream failures (5xx / malformed response with no status), and raw network errors
+// (fetch() throwing a plain Error, not a GroqError, on a dropped connection) — none of these mean
+// the request itself was bad, so one retry is worth it. A genuine 4xx client error (bad key,
+// malformed request) is never retried since retrying it would just fail the same way again.
 async function callGroqWithRetry(apiKey: string, params: Parameters<typeof callGroq>[1]) {
   try {
     return await callGroq(apiKey, params);
   } catch (err) {
-    if (err instanceof GroqError && err.status === 429) {
-      const waitSeconds = Math.min(err.retryAfterSeconds ?? 5, 15);
-      await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
-      return await callGroq(apiKey, params);
-    }
-    throw err;
+    const isRetryable = err instanceof GroqError
+      ? err.status === 429 || err.status === undefined || err.status >= 500
+      : true;
+    if (!isRetryable) throw err;
+
+    const waitSeconds = err instanceof GroqError && err.status === 429
+      ? Math.min(err.retryAfterSeconds ?? 5, 15)
+      : 2;
+    console.error('Groq call failed, retrying once:', err instanceof Error ? err.message : String(err));
+    await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
+    return await callGroq(apiKey, params);
   }
 }
