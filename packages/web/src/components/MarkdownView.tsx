@@ -94,7 +94,15 @@ export function MarkdownView({ text }: { text: string }) {
 
     const paraLines = [line];
     let j = i + 1;
-    while (j < lines.length && lines[j].trim() && !HEADING_RE.test(lines[j]) && !UL_RE.test(lines[j]) && !OL_RE.test(lines[j]) && !HR_RE.test(lines[j].trim())) {
+    while (
+      j < lines.length && lines[j].trim()
+      && !HEADING_RE.test(lines[j]) && !UL_RE.test(lines[j]) && !OL_RE.test(lines[j]) && !HR_RE.test(lines[j].trim())
+      // A table's header row can immediately follow a prose line with no blank line between them
+      // (the model doesn't always insert one) — without this check the accumulation loop swallows
+      // the whole table into this paragraph via the join(' ') below, and it never reaches the
+      // table-detection branch at the top of the outer loop at all.
+      && !(lines[j].includes('|') && lines[j + 1] !== undefined && TABLE_SEP_RE.test(lines[j + 1]))
+    ) {
       paraLines.push(lines[j]); j++;
     }
     blocks.push(<p key={key++} className="md-p">{parseInline(paraLines.join(' '))}</p>);
