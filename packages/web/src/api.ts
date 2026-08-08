@@ -257,14 +257,30 @@ export interface NeedsAttentionEntry {
   recordStatus: string;
 }
 
-export function getDashboard(token: string, fmsId?: string) {
-  const params = fmsId ? `?fmsId=${encodeURIComponent(fmsId)}` : '';
+export interface DashboardQuery { fmsIds?: string[]; doers?: string[] }
+
+function csvParams(query: { fmsIds?: string[]; doers?: string[] }): URLSearchParams {
+  const params = new URLSearchParams();
+  if (query.fmsIds?.length) params.set('fmsId', query.fmsIds.join(','));
+  if (query.doers?.length) params.set('doer', query.doers.join(','));
+  return params;
+}
+
+export function getDashboard(token: string, query: DashboardQuery = {}) {
+  const params = csvParams(query);
   return request<{
     kpi: DashboardKpi; fmsHealth: FmsHealth[]; freshness: DashboardFreshness;
     needsAttention: NeedsAttentionEntry[]; topBottleneckStages: BottleneckBucket[];
   }>(
-    `/api/dashboard${params}`, {}, token,
+    `/api/dashboard?${params.toString()}`, {}, token,
   );
+}
+
+export interface UpcomingCalendarDay { date: string; count: number }
+
+export function getUpcomingCalendar(token: string, query: DashboardQuery = {}) {
+  const params = csvParams(query);
+  return request<UpcomingCalendarDay[]>(`/api/dashboard/upcoming-calendar?${params.toString()}`, {}, token);
 }
 
 export function triggerSync(token: string) {

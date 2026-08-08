@@ -10,6 +10,8 @@ import { StatusBadge } from '../components/StatusBadge';
 import { RecordDrawer } from '../components/RecordDrawer';
 import { EmptyState } from '../components/EmptyState';
 import { HelpHotspot } from '../components/HelpHotspot';
+import { MultiSelectDropdown } from '../components/MultiSelectDropdown';
+import { UpcomingCalendarModal } from '../components/UpcomingCalendarModal';
 
 const DOER_SNAPSHOT_SIZE = 5;
 
@@ -17,7 +19,12 @@ export function DashboardPage() {
   const { token } = useAuth();
   const { navigate } = useNavigation();
   const [fmsList, setFmsList] = useState<FmsConfig[]>([]);
-  const [fmsId, setFmsId] = useState('');
+  const [fmsIds, setFmsIds] = useState<string[]>([]);
+  // Scoped to Today's Workload + Doer Snapshot + the Upcoming Calendar only — the status KPI
+  // cards/FMS Health/Top Bottleneck Stages read from an FMS-level aggregate cache with no doer
+  // dimension, so this filter deliberately doesn't touch them (see M11 plan).
+  const [doerIds, setDoerIds] = useState<string[]>([]);
+  const [doerOptions, setDoerOptions] = useState<string[]>([]);
   const [kpi, setKpi] = useState<DashboardKpi | null>(null);
   const [fmsHealth, setFmsHealth] = useState<FmsHealth[]>([]);
   const [freshness, setFreshness] = useState<DashboardFreshness | null>(null);
@@ -27,18 +34,29 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<{ fmsId: string; recordId: string } | null>(null);
+  const [showCalendar, setShowCalendar] = useState(false);
 
   useEffect(() => {
     if (!token) return;
     api.getFmsList(token).then((res) => { if (res.ok) setFmsList(res.data); });
   }, [token]);
 
+  // Doer options scoped to a single selected FMS, same as Live Records' own filter dropdown
+  // (getRecordFilterOptions is FMS-scoped by design, not multi-fmsId aware) — shows every doer
+  // across all FMS when zero or more than one FMS is selected.
+  useEffect(() => {
+    if (!token) return;
+    api.getRecordFilterOptions(token, fmsIds.length === 1 ? fmsIds[0] : undefined).then((res) => {
+      if (res.ok) setDoerOptions(res.data.doers);
+    });
+  }, [token, fmsIds]);
+
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     const [res, doerRes] = await Promise.all([
-      api.getDashboard(token, fmsId || undefined),
-      api.getDoerPerformance(token, { fmsId: fmsId || undefined }),
+      api.getDashboard(token, { fmsIds, doers: doerIds }),
+      api.getDoerPerformance(token, { fmsId: fmsIds.length === 1 ? fmsIds[0] : undefined }),
     ]);
     setLoading(false);
     if (!res.ok) { setError(res.message); return; }
@@ -51,7 +69,7 @@ export function DashboardPage() {
     // Doer Snapshot is a secondary widget — a permission gap or transient failure on this call
     // shouldn't blank the whole Dashboard, just leave the snapshot empty.
     setDoerRows(doerRes.ok ? doerRes.data : []);
-  }, [token, fmsId]);
+  }, [token, fmsIds, doerIds]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -60,18 +78,25 @@ export function DashboardPage() {
   if (!kpi) return null;
 
   const erroredFms = fmsHealth.filter((f) => f.error);
+  // Live Records/Action Center/Update Health/Bottleneck Analysis still take one fmsId nav param
+  // each (not yet retrofitted to multi-select — see M11 plan's Phase C), so a drill-through only
+  // pre-fills it when exactly one FMS is active here; with 0 or 2+ selected it opens unfiltered
+  // by FMS rather than guessing which one was meant.
+  const fmsIdParam: Record<string, string> = fmsIds.length === 1 ? { fmsId: fmsIds[0] } : {};
+  // Doer Snapshot is a client-side filter over doerRows already fetched — doerPerformance.ts
+  // itself has no multi-doer param yet, this is just narrowing what's already in hand.
+  const scopedDoerRows = doerIds.length ? doerRows.filter((d) => doerIds.includes(d.doerName)) : doerRows;
   // Worst-first (most overdue+stalled) — same "worst thing first" convention as the Needs
   // Attention table below. Full detail (on-time %, delay, every doer) lives on Doer Performance;
   // this is just enough to see who's carrying the load without leaving the Dashboard.
-  const topDoers = [...doerRows].sort((a, b) => (b.overdue + b.stalled) - (a.overdue + a.stalled)).slice(0, DOER_SNAPSHOT_SIZE);
+  const topDoers = [...scopedDoerRows].sort((a, b) => (b.overdue + b.stalled) - (a.overdue + a.stalled)).slice(0, DOER_SNAPSHOT_SIZE);
 
   return (
     <div className="dashboard-page">
       <div className="filter-bar">
-        <select value={fmsId} onChange={(e) => setFmsId(e.target.value)}>
-          <option value="">All FMS</option>
-          {fmsList.map((f) => <option key={f.fmsId} value={f.fmsId}>{f.fmsName}</option>)}
-        </select>
+        <MultiSelectDropdown
+          options={fmsList.map((f) => ({ value: f.fmsId, label: f.fmsName }))}
+          selected={fmsIds} onChange={setFmsIds} placeholder="All FMS" />
       </div>
 
       {erroredFms.length > 0 && (
@@ -86,31 +111,31 @@ export function DashboardPage() {
           split (not merged into one card) since they have different root causes — a missed
           deadline vs. one that was never set — and Stalled is often the dominant issue. */}
       <div className="grid grid-cols-5" style={{ marginBottom: 22 }}>
-        <div onClick={() => navigate('liveRecords', fmsId ? { fmsId } : {})} style={{ cursor: 'pointer', position: 'relative' }}>
+        <div onClick={() => navigate('liveRecords', fmsIdParam)} style={{ cursor: 'pointer', position: 'relative' }}>
           <KpiCard icon="fa-database" color="blue" value={kpi.totalActiveRecords} label="Active Records" />
           <HelpHotspot title="Active Records"
             en="The total count of every record across your connected FMS — running, completed, everything — except ones marked archived. Not just the pending ones; see Running On Time/At Risk/Overdue/Stalled below for the pending breakdown."
             hi="Saari connected FMS ke saare records ka total count — running, completed, sab kuch — sirf archived records isme nahi aate. Ye sirf pending wale nahi hain; pending ka breakdown neeche Running On Time/At Risk/Overdue/Stalled cards mein dekho." />
         </div>
-        <div onClick={() => navigate('liveRecords', { ...(fmsId ? { fmsId } : {}), status: 'RUNNING_ON_TIME' })} style={{ cursor: 'pointer', position: 'relative' }}>
+        <div onClick={() => navigate('liveRecords', { ...(fmsIdParam), status: 'RUNNING_ON_TIME' })} style={{ cursor: 'pointer', position: 'relative' }}>
           <KpiCard icon="fa-circle-play" color="blue" value={kpi.runningOnTime} label="Running On Time" />
           <HelpHotspot title="Running On Time"
             en="Records on schedule right now — their current step still has time before its deadline. Nothing to worry about yet."
             hi="Records jo abhi time pe chal rahe hain — current step ki deadline aane me abhi time hai. Abhi tension lene wali baat nahi." />
         </div>
-        <div onClick={() => navigate('liveRecords', { ...(fmsId ? { fmsId } : {}), status: 'AT_RISK' })} style={{ cursor: 'pointer', position: 'relative' }}>
+        <div onClick={() => navigate('liveRecords', { ...(fmsIdParam), status: 'AT_RISK' })} style={{ cursor: 'pointer', position: 'relative' }}>
           <KpiCard icon="fa-triangle-exclamation" color="amber" value={kpi.atRisk} label="At Risk" />
           <HelpHotspot title="At Risk"
             en="Records whose current step's deadline is coming up very soon. Worth checking now, before they slip into Overdue."
             hi="Records jinke current step ki deadline bahut jald aane wali hai. Abhi check kar lo, warna Overdue ho jayenge." />
         </div>
-        <div onClick={() => navigate('liveRecords', { ...(fmsId ? { fmsId } : {}), status: 'OVERDUE' })} style={{ cursor: 'pointer', position: 'relative' }}>
+        <div onClick={() => navigate('liveRecords', { ...(fmsIdParam), status: 'OVERDUE' })} style={{ cursor: 'pointer', position: 'relative' }}>
           <KpiCard icon="fa-circle-exclamation" color="red" value={kpi.overdue} label="Overdue" />
           <HelpHotspot title="Overdue"
             en="Records that missed their planned deadline and are still not done. These need attention first."
             hi="Records jinki planned deadline nikal chuki hai aur abhi tak complete nahi hue. Inko sabse pehle dekho." />
         </div>
-        <div onClick={() => navigate('liveRecords', { ...(fmsId ? { fmsId } : {}), status: 'STALLED' })} style={{ cursor: 'pointer', position: 'relative' }}>
+        <div onClick={() => navigate('liveRecords', { ...(fmsIdParam), status: 'STALLED' })} style={{ cursor: 'pointer', position: 'relative' }}>
           <KpiCard icon="fa-hourglass-half" color="red" value={kpi.stalled} label="Stalled (no deadline set)" />
           <HelpHotspot title="Stalled"
             en="Records whose current step never got a deadline (plan time) at all, and nobody has touched them in a while — different from Overdue, which had a deadline that got missed."
@@ -123,25 +148,32 @@ export function DashboardPage() {
         <HelpHotspot inline title="Today's Workload"
           en="Every record with a real deadline, grouped by calendar date instead of by status — a simpler question than the status cards above: what's due today, what's already late from before today, and what's coming later. A record due at 9am today and still open counts as 'Due Today' here even though it's already Overdue above — this is a date view, not a status view."
           hi="Har record jiska real deadline hai, status ki jagah calendar date ke hisab se group kiya gaya hai — upar wale status cards se ek simple sawaal: aaj kya due hai, aaj se pehle ka kya miss ho chuka hai, aur aage kya aane wala hai. Jo record aaj subah 9 baje due tha aur abhi bhi khula hai, wo yahan 'Due Today' mein ginega chahe upar wo already Overdue ho — ye date wala view hai, status wala nahi." />
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11.5, color: 'var(--text-soft)', fontWeight: 700 }}>Doer:</span>
+          <MultiSelectDropdown options={doerOptions.map((d) => ({ value: d, label: d }))} selected={doerIds} onChange={setDoerIds} placeholder="All Doers" />
+          <HelpHotspot inline title="Doer Filter"
+            en="Narrows Today's Workload, Doer Snapshot, and the Upcoming Calendar to only the doers picked here — the status cards, FMS Health, and Top Bottleneck Stages above don't have a per-doer breakdown to filter."
+            hi="Ye sirf Today's Workload, Doer Snapshot, aur Upcoming Calendar ko yahan chuni gayi doers tak simit karta hai — upar wale status cards, FMS Health, aur Top Bottleneck Stages mein doer-wise breakdown nahi hai isliye wo affect nahi hote." />
+        </div>
       </div>
       <div className="grid grid-cols-3" style={{ marginBottom: 22 }}>
-        <div onClick={() => navigate('liveRecords', { ...(fmsId ? { fmsId } : {}), workload: 'dueToday' })} style={{ cursor: 'pointer', position: 'relative' }}>
+        <div onClick={() => navigate('liveRecords', { ...(fmsIdParam), workload: 'dueToday' })} style={{ cursor: 'pointer', position: 'relative' }}>
           <KpiCard icon="fa-calendar-check" color="blue" value={kpi.dueToday} label="Due Today" />
           <HelpHotspot title="Due Today"
             en="Records whose current step's deadline falls today — whether that time has already passed today or is still ahead."
             hi="Records jinke current step ki deadline aaj ki hai — chahe wo time aaj nikal chuka ho ya abhi aana baaki ho." />
         </div>
-        <div onClick={() => navigate('liveRecords', { ...(fmsId ? { fmsId } : {}), workload: 'overdueBeforeToday' })} style={{ cursor: 'pointer', position: 'relative' }}>
+        <div onClick={() => navigate('liveRecords', { ...(fmsIdParam), workload: 'overdueBeforeToday' })} style={{ cursor: 'pointer', position: 'relative' }}>
           <KpiCard icon="fa-calendar-xmark" color="red" value={kpi.overdueBeforeToday} label="Yesterday Due" />
           <HelpHotspot title="Yesterday Due"
             en="Records whose deadline was on some earlier date (yesterday or before) and are still not done — carried over from a previous day, not just today's list. The Overdue card up top is different: it's every record whose deadline has passed, even by a few minutes today."
             hi="Records jinki deadline kisi pehle wali date ki thi (kal ya usse pehle) aur abhi tak complete nahi hue — pichle kisi din se carry over hue hain, sirf aaj ki list nahi. Upar wala Overdue card alag hai: wo har record hai jiski deadline nikal chuki hai, chahe aaj hi kuch minute pehle kyun na nikli ho." />
         </div>
-        <div onClick={() => navigate('liveRecords', { ...(fmsId ? { fmsId } : {}), workload: 'upcoming' })} style={{ cursor: 'pointer', position: 'relative' }}>
+        <div onClick={() => setShowCalendar(true)} style={{ cursor: 'pointer', position: 'relative' }}>
           <KpiCard icon="fa-calendar-plus" color="green" value={kpi.upcoming} label="Upcoming" />
           <HelpHotspot title="Upcoming"
-            en="Records whose deadline is on some future date — not due yet, nothing to do right now."
-            hi="Records jinki deadline aane wali kisi date ki hai — abhi due nahi hai, abhi kuch karne ki zaroorat nahi." />
+            en="Records whose deadline is on some future date — not due yet, nothing to do right now. Click the card to see them spread across a calendar, day by day."
+            hi="Records jinki deadline aane wali kisi date ki hai — abhi due nahi hai, abhi kuch karne ki zaroorat nahi. Card pe click karke inhe calendar mein, din-wise dekho." />
         </div>
       </div>
 
@@ -152,20 +184,20 @@ export function DashboardPage() {
           hi="Teen quick signals: aaj kitna kaam complete hua, poori company mein abhi kitna kaam open hai, aur kitne records ko fresh check chahiye (kaafi time se touch nahi hue)." />
       </div>
       <div className="grid grid-cols-3" style={{ marginBottom: 22 }}>
-        <div onClick={() => navigate('liveRecords', { ...(fmsId ? { fmsId } : {}), status: 'COMPLETED_ON_TIME' })} style={{ cursor: 'pointer', position: 'relative' }}>
+        <div onClick={() => navigate('liveRecords', { ...(fmsIdParam), status: 'COMPLETED_ON_TIME' })} style={{ cursor: 'pointer', position: 'relative' }}>
           <KpiCard icon="fa-circle-check" color="green" value={kpi.completedToday} label="Completed Today" />
           <HelpHotspot title="Completed Today"
             en="Records whose current stage was finished today, across every connected FMS."
             hi="Records jinka current stage aaj complete hua, saari connected FMS mein se." />
         </div>
-        <div onClick={() => navigate('actionCenter', fmsId ? { fmsId } : {})} style={{ cursor: 'pointer', position: 'relative' }}>
+        <div onClick={() => navigate('actionCenter', fmsIdParam)} style={{ cursor: 'pointer', position: 'relative' }}>
           <KpiCard icon="fa-list-check" color="blue" value={kpi.openActions} label="Open Actions" />
           <HelpHotspot title="Open Actions"
             en="Action items still open (not Resolved or Cancelled) across every connected FMS — click through to Action Center to work through them."
             hi="Action items jo abhi bhi open hain (Resolved ya Cancelled nahi) — saari connected FMS mein se. Action Center pe click karke inpe kaam karo." />
         </div>
         {freshness && (
-          <div onClick={() => navigate('updateHealth', fmsId ? { fmsId } : {})} style={{ cursor: 'pointer', position: 'relative' }}>
+          <div onClick={() => navigate('updateHealth', fmsIdParam)} style={{ cursor: 'pointer', position: 'relative' }}>
             <KpiCard icon="fa-magnifying-glass" color="amber"
               value={freshness.warning + freshness.stale + freshness.critical + freshness.never}
               label="Needs a Check" />
@@ -337,6 +369,9 @@ export function DashboardPage() {
 
       {selected && (
         <RecordDrawer fmsId={selected.fmsId} recordId={selected.recordId} onClose={() => setSelected(null)} />
+      )}
+      {showCalendar && (
+        <UpcomingCalendarModal fmsIds={fmsIds} doers={doerIds} onClose={() => setShowCalendar(false)} />
       )}
     </div>
   );

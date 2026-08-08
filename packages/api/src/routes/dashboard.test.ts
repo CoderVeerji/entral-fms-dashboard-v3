@@ -26,6 +26,7 @@ describeIfDb('dashboard routes (integration)', () => {
   const username = `test_dash_${Date.now()}`;
   const password = 'correct-horse-battery-staple';
   const fmsA = 'fms_dash_test_a';
+  const fmsB = 'fms_dash_test_b';
   let token: string;
 
   const env = { DATABASE_URL: DATABASE_URL! };
@@ -45,9 +46,15 @@ describeIfDb('dashboard routes (integration)', () => {
       fullName: 'Test Dashboard User', roleId: testRoleId, status: 'ACTIVE', mustChangePassword: false,
     });
 
-    await db.insert(schema.fmsMaster).values({
-      fmsId: fmsA, fmsName: 'Test Dashboard FMS', spreadsheetId: 'sheet_dash_test',
-      statusCacheSheetName: 'Status_Cache', active: true, isDeleted: false,
+    await db.insert(schema.fmsMaster).values([
+      { fmsId: fmsA, fmsName: 'Test Dashboard FMS', spreadsheetId: 'sheet_dash_test', statusCacheSheetName: 'Status_Cache', active: true, isDeleted: false },
+      // For the multi-select ?fmsId=a,b test — a second, minimal FMS with its own totals.
+      { fmsId: fmsB, fmsName: 'Test Dashboard FMS B', spreadsheetId: 'sheet_dash_test_b', statusCacheSheetName: 'Status_Cache', active: true, isDeleted: false },
+    ]);
+    await db.insert(schema.fmsEvalCache).values({
+      fmsId: fmsB, computedAt: new Date(),
+      totals: { total: 9, runningOnTime: 9, atRisk: 0, overdue: 0, stalled: 0, completedOnTime: 0, completedLate: 0, dataException: 0, staleRecords: 0 },
+      scores: { overall: 95 },
     });
 
     // For completedToday/currentBottleneck/topBottleneckStages — stageBottlenecks is stored
@@ -81,6 +88,14 @@ describeIfDb('dashboard routes (integration)', () => {
     // run happens to execute at, making the "same day" assertions flaky. The ±30h ones below don't
     // have this problem (safely more than a day from the boundary regardless of current time).
     const todayAtUTC = (hour: number) => new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), hour, 0, 0));
+    // Same fixed-hour safety as todayAtUTC, extended to N days out — for /upcoming-calendar's
+    // per-day grouping, where (unlike the coarse dueToday/overdueBeforeToday/upcoming buckets)
+    // the exact calendar date matters, so a relative "+Nh" offset isn't precise enough to trust.
+    const daysFromTodayAtUTC = (days: number, hour: number) => {
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), hour, 0, 0));
+      d.setUTCDate(d.getUTCDate() + days);
+      return d;
+    };
     // d1: due earlier today, still open (Overdue (Before Today) must NOT count this — same day)
     // d2: due later today, still open (Due Today)
     // d3: due tomorrow (Upcoming)
@@ -92,6 +107,15 @@ describeIfDb('dashboard routes (integration)', () => {
       { fmsId: fmsA, recordId: 'd3', displayName: 'Due tomorrow', recordStatus: 'RUNNING_ON_TIME', freshness: 'Fresh', planTime: hoursFromNow(30) },
       { fmsId: fmsA, recordId: 'd4', displayName: 'Due yesterday', recordStatus: 'OVERDUE', freshness: 'Critical', planTime: hoursFromNow(-30) },
       { fmsId: fmsA, recordId: 'd5', displayName: 'No plan yet', recordStatus: 'NOT_STARTED', freshness: 'Never', planTime: null },
+      // d6/d7: for the ?doer= scoping test on Today's Workload + the /upcoming-calendar test —
+      // two different upcoming dates so the calendar's day-bucketing has something to distinguish.
+      { fmsId: fmsA, recordId: 'd6', displayName: 'Priya due today', doer: 'Priya Dash', recordStatus: 'RUNNING_ON_TIME', freshness: 'Fresh', planTime: todayAtUTC(15) },
+      { fmsId: fmsA, recordId: 'd7', displayName: 'Ravi due in 3 days', doer: 'Ravi Dash', recordStatus: 'RUNNING_ON_TIME', freshness: 'Fresh', planTime: hoursFromNow(72) },
+      // cal1/cal2: for /upcoming-calendar's per-day grouping — two records land on the same future
+      // date (day+2), one on a different date (day+5), to verify both the grouping and the count.
+      { fmsId: fmsA, recordId: 'cal1', displayName: 'Calendar day+2 a', recordStatus: 'RUNNING_ON_TIME', freshness: 'Fresh', planTime: daysFromTodayAtUTC(2, 12) },
+      { fmsId: fmsA, recordId: 'cal2', displayName: 'Calendar day+2 b', recordStatus: 'RUNNING_ON_TIME', freshness: 'Fresh', planTime: daysFromTodayAtUTC(2, 15) },
+      { fmsId: fmsA, recordId: 'cal3', displayName: 'Calendar day+5', recordStatus: 'RUNNING_ON_TIME', freshness: 'Fresh', planTime: daysFromTodayAtUTC(5, 9) },
     ]);
 
     const loginRes = await app.request('/api/auth/login', {
@@ -104,8 +128,10 @@ describeIfDb('dashboard routes (integration)', () => {
   afterAll(async () => {
     await db.delete(schema.actionItems).where(eq(schema.actionItems.fmsId, fmsA));
     await db.delete(schema.fmsEvalCache).where(eq(schema.fmsEvalCache.fmsId, fmsA));
+    await db.delete(schema.fmsEvalCache).where(eq(schema.fmsEvalCache.fmsId, fmsB));
     await db.delete(schema.records).where(eq(schema.records.fmsId, fmsA));
     await db.delete(schema.fmsMaster).where(eq(schema.fmsMaster.fmsId, fmsA));
+    await db.delete(schema.fmsMaster).where(eq(schema.fmsMaster.fmsId, fmsB));
     await db.delete(schema.sessions).where(eq(schema.sessions.userId, testUserId));
     await db.delete(schema.users).where(eq(schema.users.userId, testUserId));
     await db.delete(schema.roles).where(eq(schema.roles.roleId, testRoleId));
@@ -123,11 +149,27 @@ describeIfDb('dashboard routes (integration)', () => {
     const res = await app.request(`/api/dashboard?fmsId=${fmsA}`, auth(), env);
     expect(res.status).toBe(200);
     const body = await asJson(res);
-    // d1 + d2 both fall today (regardless of whether the exact time already passed);
-    // d4 (yesterday) is the only Overdue (Before Today); d3 (tomorrow) is the only Upcoming.
-    expect(body.data.kpi.dueToday).toBe(2);
+    // d1 + d2 + d6 all fall today (regardless of whether the exact time already passed);
+    // d4 (yesterday) is the only Overdue (Before Today); d3/d7/cal1/cal2/cal3 are all Upcoming.
+    expect(body.data.kpi.dueToday).toBe(3);
     expect(body.data.kpi.overdueBeforeToday).toBe(1);
-    expect(body.data.kpi.upcoming).toBe(1);
+    expect(body.data.kpi.upcoming).toBe(5);
+  });
+
+  it('?doer= scopes Today\'s Workload to only that doer\'s records', async () => {
+    const res = await app.request(`/api/dashboard?fmsId=${fmsA}&doer=${encodeURIComponent('Priya Dash')}`, auth(), env);
+    const body = await asJson(res);
+    expect(body.data.kpi.dueToday).toBe(1); // only d6
+    expect(body.data.kpi.upcoming).toBe(0); // Ravi's d7 excluded
+  });
+
+  it('?fmsId=a,b combines multiple FMS (multi-select)', async () => {
+    const singleRes = await app.request(`/api/dashboard?fmsId=${fmsA}`, auth(), env);
+    const bothRes = await app.request(`/api/dashboard?fmsId=${fmsA},${fmsB}`, auth(), env);
+    const singleBody = await asJson(singleRes);
+    const bothBody = await asJson(bothRes);
+    expect(bothBody.data.kpi.totalActiveFms).toBe(2);
+    expect(bothBody.data.kpi.totalActiveRecords).toBe(singleBody.data.kpi.totalActiveRecords + 9); // + fmsB's totals.total
   });
 
   it('reads completedToday from fms_eval_cache', async () => {
@@ -153,5 +195,28 @@ describeIfDb('dashboard routes (integration)', () => {
     const res = await app.request(`/api/dashboard?fmsId=${fmsA}`, auth(), env);
     const body = await asJson(res);
     expect(body.data.topBottleneckStages.map((b: { key: string }) => b.key)).toEqual(['Invoicing', 'Dispatch']);
+  });
+
+  it('/upcoming-calendar groups upcoming records by calendar date', async () => {
+    const now = new Date();
+    const isoDaysFromNow = (days: number) => {
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+      d.setUTCDate(d.getUTCDate() + days);
+      return d.toISOString().slice(0, 10);
+    };
+    const res = await app.request(`/api/dashboard/upcoming-calendar?fmsId=${fmsA}`, auth(), env);
+    expect(res.status).toBe(200);
+    const body = await asJson(res);
+    const byDate = new Map(body.data.map((r: { date: string; count: number }) => [r.date, r.count]));
+    expect(byDate.get(isoDaysFromNow(2))).toBe(2); // cal1 + cal2
+    expect(byDate.get(isoDaysFromNow(5))).toBe(1); // cal3
+  });
+
+  it('/upcoming-calendar respects the doer filter', async () => {
+    const res = await app.request(`/api/dashboard/upcoming-calendar?fmsId=${fmsA}&doer=${encodeURIComponent('Ravi Dash')}`, auth(), env);
+    const body = await asJson(res);
+    // cal1/cal2/cal3 have no doer set, so a Ravi-only filter should only ever surface d7's date.
+    const total = body.data.reduce((sum: number, r: { count: number }) => sum + r.count, 0);
+    expect(total).toBe(1);
   });
 });

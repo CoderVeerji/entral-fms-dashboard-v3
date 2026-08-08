@@ -3,6 +3,7 @@ import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import { fmsMaster, fmsEvalCache, records, actionItems } from '@fms/db';
 import { ok, type FinalizedBucket } from '@fms/core';
 import { requireAuth } from '../middleware/auth';
+import { parseCsvParam } from '../queryHelpers';
 import type { Variables } from '../types';
 
 // Direct successor to app/Code.gs's getDashboardData — reads the small, already-computed
@@ -28,10 +29,15 @@ interface CriticalSampleEntry {
 
 dashboardRoutes.get('/', requireAuth('dashboard.view'), async (c) => {
   const db = c.get('db');
-  const fmsIdFilter = c.req.query('fmsId');
+  // ?fmsId=a,b,c — multi-select from MultiSelectDropdown.tsx; a single value still works
+  // unchanged. ?doer=x,y scopes only Today's Workload below — fmsHealth/kpi/topBottleneckStages
+  // read from fms_eval_cache, an FMS-level aggregate with no doer dimension, so doer-filtering
+  // those would mean live-recomputing them per request; not done here (see M11 plan).
+  const fmsIdFilters = parseCsvParam(c.req.query('fmsId'));
+  const doerFilters = parseCsvParam(c.req.query('doer'));
 
   const fmsConditions = [eq(fmsMaster.active, true), eq(fmsMaster.isDeleted, false)];
-  if (fmsIdFilter) fmsConditions.push(eq(fmsMaster.fmsId, fmsIdFilter));
+  if (fmsIdFilters.length) fmsConditions.push(inArray(fmsMaster.fmsId, fmsIdFilters));
   const configs = await db.select().from(fmsMaster).where(and(...fmsConditions));
 
   const evalRows = configs.length
@@ -98,8 +104,7 @@ dashboardRoutes.get('/', requireAuth('dashboard.view'), async (c) => {
   // excluded here too, same as updateHealth.ts, so the two pages' numbers agree: a record nobody
   // has scheduled yet isn't "gone quiet", it's just not started.
   const freshnessConditions = [eq(records.isArchived, false), sql`${records.recordStatus} != 'NOT_STARTED'`];
-  if (fmsIdFilter) freshnessConditions.push(eq(records.fmsId, fmsIdFilter));
-  else if (configs.length) freshnessConditions.push(inArray(records.fmsId, configs.map((c2) => c2.fmsId)));
+  if (configs.length) freshnessConditions.push(inArray(records.fmsId, configs.map((c2) => c2.fmsId)));
   const freshnessRows = configs.length
     ? await db.select({ freshness: records.freshness, count: sql<number>`count(*)` })
         .from(records).where(and(...freshnessConditions)).groupBy(records.freshness)
@@ -124,8 +129,8 @@ dashboardRoutes.get('/', requireAuth('dashboard.view'), async (c) => {
   // lens than the minute-precision recordStatus above it — a record due at 9am today and still
   // open is "Due Today" here even though it's already OVERDUE by status.
   const workloadConditions = [eq(records.isArchived, false), sql`${records.planTime} is not null`];
-  if (fmsIdFilter) workloadConditions.push(eq(records.fmsId, fmsIdFilter));
-  else if (configs.length) workloadConditions.push(inArray(records.fmsId, configs.map((c2) => c2.fmsId)));
+  if (configs.length) workloadConditions.push(inArray(records.fmsId, configs.map((c2) => c2.fmsId)));
+  if (doerFilters.length) workloadConditions.push(inArray(records.doer, doerFilters));
   const workloadRows = configs.length
     ? await db.select({
         dueToday: sql<number>`count(*) filter (where ${records.planTime} >= date_trunc('day', now()) and ${records.planTime} < date_trunc('day', now()) + interval '1 day')`,
@@ -151,4 +156,35 @@ dashboardRoutes.get('/', requireAuth('dashboard.view'), async (c) => {
     kpi, fmsHealth, freshness, needsAttention: needsAttention.slice(0, 20),
     topBottleneckStages: topBottleneckStages.slice(0, 5),
   }));
+});
+
+// Backs UpcomingCalendarModal.tsx — every record counted in the Dashboard's own "Upcoming" card
+// (see the identical date_trunc('day', now()) + interval '1 day' boundary above), grouped by
+// calendar date instead of summed into one number. Returns every future date bucket in one call
+// (v1 doesn't paginate by month server-side — this app's current record volume makes that an
+// unnecessary mechanism to build ahead of need; month navigation is cheap to do client-side over
+// the already-fetched array).
+dashboardRoutes.get('/upcoming-calendar', requireAuth('dashboard.view'), async (c) => {
+  const db = c.get('db');
+  const fmsIdFilters = parseCsvParam(c.req.query('fmsId'));
+  const doerFilters = parseCsvParam(c.req.query('doer'));
+
+  const fmsConditions = [eq(fmsMaster.active, true), eq(fmsMaster.isDeleted, false)];
+  if (fmsIdFilters.length) fmsConditions.push(inArray(fmsMaster.fmsId, fmsIdFilters));
+  const configs = await db.select({ fmsId: fmsMaster.fmsId }).from(fmsMaster).where(and(...fmsConditions));
+  if (!configs.length) return c.json(ok([]));
+
+  const conditions = [
+    eq(records.isArchived, false),
+    inArray(records.fmsId, configs.map((c2) => c2.fmsId)),
+    sql`${records.planTime} >= date_trunc('day', now()) + interval '1 day'`,
+  ];
+  if (doerFilters.length) conditions.push(inArray(records.doer, doerFilters));
+
+  const rows = await db.select({
+    date: sql<string>`to_char(date_trunc('day', ${records.planTime}), 'YYYY-MM-DD')`,
+    count: sql<number>`count(*)`,
+  }).from(records).where(and(...conditions)).groupBy(sql`date_trunc('day', ${records.planTime})`);
+
+  return c.json(ok(rows.map((r) => ({ date: r.date, count: Number(r.count) }))));
 });

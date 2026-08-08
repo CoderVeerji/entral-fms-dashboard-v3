@@ -490,3 +490,55 @@ tr.row-clickable:hover td.row-view-cell { color: var(--blue); }
   border-radius: 10px; padding: 8px 14px; font-size: 12.5px; font-weight: 700; margin-bottom: 16px;
 }
 .help-mode-banner i { flex-shrink: 0; }
+
+/* ---------- MultiSelectDropdown (components/MultiSelectDropdown.tsx) ---------- */
+.multiselect { position: relative; flex: 0 0 auto; }
+.multiselect-btn {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1.5px solid var(--border);
+  border-radius: 8px; font-size: 13px; background: var(--surface); color: var(--text); min-width: 140px;
+  justify-content: space-between;
+}
+.multiselect-btn i { font-size: 10px; color: var(--text-soft); }
+.multiselect-backdrop { position: fixed; inset: 0; z-index: 1200; background: transparent; }
+.multiselect-panel {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 1201; width: 240px; max-width: calc(100vw - 32px);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-hover, var(--shadow));
+  padding: 10px; animation: help-panel-in .15s ease;
+}
+.multiselect-panel-actions { display: flex; gap: 8px; margin-bottom: 8px; }
+.multiselect-panel-actions button {
+  flex: 1; padding: 5px 0; border-radius: 6px; border: 1.5px solid var(--border); background: var(--surface-alt);
+  color: var(--text-soft); font-size: 11px; font-weight: 700;
+}
+.multiselect-panel-options { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.multiselect-option {
+  display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-radius: 6px; font-size: 13px;
+  color: var(--text); cursor: pointer;
+}
+.multiselect-option:hover { background: var(--surface-alt); }
+.multiselect-empty { font-size: 12px; color: var(--text-soft); padding: 8px 4px; }
+@media (max-width: 760px) {
+  .multiselect-panel { left: auto; right: 0; }
+}
+
+/* ---------- UpcomingCalendarModal (components/UpcomingCalendarModal.tsx) ---------- */
+.calendar-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.calendar-month-label { font-weight: 800; font-size: 15px; color: var(--navy); }
+.calendar-month-total { font-weight: 600; font-size: 12.5px; color: var(--text-soft); }
+.calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.calendar-weekdays { margin-bottom: 6px; }
+.calendar-weekday { text-align: center; font-size: 11px; font-weight: 700; color: var(--text-soft); text-transform: uppercase; }
+.calendar-cell {
+  min-height: 64px; border-radius: 8px; border: 1px solid var(--border); padding: 6px;
+  background: var(--surface-alt); display: flex; flex-direction: column; gap: 4px;
+}
+.calendar-cell-empty { border: none; background: transparent; }
+.calendar-cell-active { cursor: pointer; background: var(--red-bg); border-color: var(--red); }
+.calendar-cell-active:hover { filter: brightness(0.97); }
+.calendar-cell-today .calendar-day-num { color: var(--blue); font-weight: 800; }
+.calendar-day-num { font-size: 12px; color: var(--text-soft); }
+.calendar-day-count { font-size: 15px; font-weight: 800; color: var(--red); }
+@media (max-width: 760px) {
+  .calendar-cell { min-height: 44px; padding: 4px; }
+  .calendar-day-count { font-size: 12px; }
+}
