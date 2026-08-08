@@ -214,6 +214,9 @@ export interface DashboardKpi {
   completedLate: number;
   dataExceptions: number;
   staleRecords: number;
+  dueToday: number;
+  overdueBeforeToday: number;
+  upcoming: number;
 }
 
 export interface FmsHealth {

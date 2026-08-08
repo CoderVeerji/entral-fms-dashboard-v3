@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import * as api from '../api';
-import type { DashboardKpi, FmsHealth, DashboardFreshness, NeedsAttentionEntry, FmsConfig } from '../api';
+import type { DashboardKpi, FmsHealth, DashboardFreshness, NeedsAttentionEntry, FmsConfig, DoerPerformanceRow } from '../api';
 import { KpiCard } from '../components/KpiCard';
 import { SkeletonBlock } from '../components/SkeletonBlock';
 import { ChartCard } from '../components/ChartCard';
@@ -10,6 +10,8 @@ import { StatusBadge } from '../components/StatusBadge';
 import { RecordDrawer } from '../components/RecordDrawer';
 import { EmptyState } from '../components/EmptyState';
 import { HelpHotspot } from '../components/HelpHotspot';
+
+const DOER_SNAPSHOT_SIZE = 5;
 
 export function DashboardPage() {
   const { token } = useAuth();
@@ -20,6 +22,7 @@ export function DashboardPage() {
   const [fmsHealth, setFmsHealth] = useState<FmsHealth[]>([]);
   const [freshness, setFreshness] = useState<DashboardFreshness | null>(null);
   const [needsAttention, setNeedsAttention] = useState<NeedsAttentionEntry[]>([]);
+  const [doerRows, setDoerRows] = useState<DoerPerformanceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<{ fmsId: string; recordId: string } | null>(null);
@@ -32,7 +35,10 @@ export function DashboardPage() {
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
-    const res = await api.getDashboard(token, fmsId || undefined);
+    const [res, doerRes] = await Promise.all([
+      api.getDashboard(token, fmsId || undefined),
+      api.getDoerPerformance(token, fmsId || undefined),
+    ]);
     setLoading(false);
     if (!res.ok) { setError(res.message); return; }
     setError(null);
@@ -40,6 +46,9 @@ export function DashboardPage() {
     setFmsHealth(res.data.fmsHealth);
     setFreshness(res.data.freshness);
     setNeedsAttention(res.data.needsAttention);
+    // Doer Snapshot is a secondary widget — a permission gap or transient failure on this call
+    // shouldn't blank the whole Dashboard, just leave the snapshot empty.
+    setDoerRows(doerRes.ok ? doerRes.data : []);
   }, [token, fmsId]);
 
   useEffect(() => { load(); }, [load]);
@@ -49,6 +58,10 @@ export function DashboardPage() {
   if (!kpi) return null;
 
   const erroredFms = fmsHealth.filter((f) => f.error);
+  // Worst-first (most overdue+stalled) — same "worst thing first" convention as the Needs
+  // Attention table below. Full detail (on-time %, delay, every doer) lives on Doer Performance;
+  // this is just enough to see who's carrying the load without leaving the Dashboard.
+  const topDoers = [...doerRows].sort((a, b) => (b.overdue + b.stalled) - (a.overdue + a.stalled)).slice(0, DOER_SNAPSHOT_SIZE);
 
   return (
     <div className="dashboard-page">
@@ -103,37 +116,45 @@ export function DashboardPage() {
         </div>
       </div>
 
+      <div className="section-title">
+        <i className="fas fa-calendar-day" />Today's Workload
+        <HelpHotspot inline title="Today's Workload"
+          en="Every record with a real deadline, grouped by calendar date instead of by status — a simpler question than the status cards above: what's due today, what's already late from before today, and what's coming later. A record due at 9am today and still open counts as 'Due Today' here even though it's already Overdue above — this is a date view, not a status view."
+          hi="Har record jiska real deadline hai, status ki jagah calendar date ke hisab se group kiya gaya hai — upar wale status cards se ek simple sawaal: aaj kya due hai, aaj se pehle ka kya miss ho chuka hai, aur aage kya aane wala hai. Jo record aaj subah 9 baje due tha aur abhi bhi khula hai, wo yahan 'Due Today' mein ginega chahe upar wo already Overdue ho — ye date wala view hai, status wala nahi." />
+      </div>
+      <div className="grid grid-cols-3" style={{ marginBottom: 22 }}>
+        <div onClick={() => navigate('liveRecords', fmsId ? { fmsId } : {})} style={{ cursor: 'pointer', position: 'relative' }}>
+          <KpiCard icon="fa-calendar-check" color="blue" value={kpi.dueToday} label="Due Today" />
+          <HelpHotspot title="Due Today"
+            en="Records whose current step's deadline falls today — whether that time has already passed today or is still ahead."
+            hi="Records jinke current step ki deadline aaj ki hai — chahe wo time aaj nikal chuka ho ya abhi aana baaki ho." />
+        </div>
+        <div onClick={() => navigate('liveRecords', fmsId ? { fmsId } : {})} style={{ cursor: 'pointer', position: 'relative' }}>
+          <KpiCard icon="fa-calendar-xmark" color="red" value={kpi.overdueBeforeToday} label="Overdue (Before Today)" />
+          <HelpHotspot title="Overdue (Before Today)"
+            en="Records whose deadline was on some earlier date and are still not done — carried over from a previous day, not just today's list."
+            hi="Records jinki deadline kisi pehle wali date ki thi aur abhi tak complete nahi hue — pichle kisi din se carry over hue hain, sirf aaj ki list nahi." />
+        </div>
+        <div onClick={() => navigate('liveRecords', fmsId ? { fmsId } : {})} style={{ cursor: 'pointer', position: 'relative' }}>
+          <KpiCard icon="fa-calendar-plus" color="green" value={kpi.upcoming} label="Upcoming" />
+          <HelpHotspot title="Upcoming"
+            en="Records whose deadline is on some future date — not due yet, nothing to do right now."
+            hi="Records jinki deadline aane wali kisi date ki hai — abhi due nahi hai, abhi kuch karne ki zaroorat nahi." />
+        </div>
+      </div>
+
       {freshness && (
-        <>
+        <div onClick={() => navigate('updateHealth', fmsId ? { fmsId } : {})} style={{ cursor: 'pointer', position: 'relative' }}>
           <div className="section-title">
             <i className="fas fa-bolt" />Data Freshness
             <HelpHotspot inline title="Data Freshness"
-              en="How recently each record was last touched — this is about activity, not deadlines. A record can be 'Running On Time' above and still show up here as Stale if nobody has updated it in a while."
-              hi="Har record ko last kab touch kiya gaya — ye deadline ke baare mein nahi hai, activity ke baare mein hai. Ek record 'Running On Time' bhi ho sakta hai aur yahan Stale bhi dikh sakta hai agar koi update nahi aaya." />
+              en="How recently each record was last touched — this is about activity, not deadlines. A record can be 'Running On Time' above and still count here if nobody has updated it in a while. Click through to Update Health for the full breakdown by how long."
+              hi="Har record ko last kab touch kiya gaya — ye deadline ke baare mein nahi hai, activity ke baare mein hai. Ek record 'Running On Time' bhi ho sakta hai aur yahan bhi gin sakta hai agar koi update nahi aaya. Poora breakdown (kitne din se) dekhne ke liye Update Health pe click karo." />
           </div>
-          <div className="grid grid-cols-5" style={{ marginBottom: 22 }}>
-            <div onClick={() => navigate('updateHealth', { ...(fmsId ? { fmsId } : {}), freshness: 'Fresh' })} style={{ cursor: 'pointer', position: 'relative' }}>
-              <KpiCard icon="fa-check" color="green" value={freshness.fresh} label="Fresh" />
-              <HelpHotspot title="Fresh" en="Updated recently (within the last day) — healthy." hi="Recently update hua hai (pichle 1 din mein) — theek hai." />
-            </div>
-            <div onClick={() => navigate('updateHealth', { ...(fmsId ? { fmsId } : {}), freshness: 'Warning' })} style={{ cursor: 'pointer', position: 'relative' }}>
-              <KpiCard icon="fa-clock" color="amber" value={freshness.warning} label="Warning" />
-              <HelpHotspot title="Warning" en="No update for a little while — not urgent yet, but worth keeping an eye on." hi="Kuch time se koi update nahi aaya — abhi urgent nahi, par nazar rakho." />
-            </div>
-            <div onClick={() => navigate('updateHealth', { ...(fmsId ? { fmsId } : {}), freshness: 'Stale' })} style={{ cursor: 'pointer', position: 'relative' }}>
-              <KpiCard icon="fa-hourglass-half" color="red" value={freshness.stale} label="Stale" />
-              <HelpHotspot title="Stale" en="No update for several days — someone should check on this record." hi="Kai dino se koi update nahi — kisi ko ye record check karna chahiye." />
-            </div>
-            <div onClick={() => navigate('updateHealth', { ...(fmsId ? { fmsId } : {}), freshness: 'Critical' })} style={{ cursor: 'pointer', position: 'relative' }}>
-              <KpiCard icon="fa-fire" color="red" value={freshness.critical} label="Critical" />
-              <HelpHotspot title="Critical" en="No update in a long time — the most neglected records, regardless of whether they have a deadline." hi="Bahut lambe time se koi update nahi — sabse zyada neglect hue records, chahe deadline ho ya na ho." />
-            </div>
-            <div onClick={() => navigate('updateHealth', { ...(fmsId ? { fmsId } : {}), freshness: 'Never' })} style={{ cursor: 'pointer', position: 'relative' }}>
-              <KpiCard icon="fa-ban" color="grey" value={freshness.never} label="Never Updated" />
-              <HelpHotspot title="Never Updated" en="No activity has ever been recorded for these — not even the first step." hi="Inpe kabhi koi activity record hi nahi hui — pehla step bhi nahi." />
-            </div>
-          </div>
-        </>
+          <KpiCard icon="fa-magnifying-glass" color="amber"
+            value={freshness.warning + freshness.stale + freshness.critical + freshness.never}
+            label="Needs a Check (Warning + Stale + Critical + Never Updated)" />
+        </div>
       )}
 
       <div className="section-title">
@@ -188,6 +209,30 @@ export function DashboardPage() {
             No connected FMS yet.
           </div>
         )}
+      </div>
+
+      <div className="section-title">
+        <i className="fas fa-users" />Doer Snapshot
+        <HelpHotspot inline title="Doer Snapshot"
+          en="Who's carrying the most pending/overdue work right now, across every connected FMS — worst first. This is a quick glance only; click through for on-time %, delay, and every doer, not just the top few."
+          hi="Abhi sabse zyada pending/overdue kaam kiske paas hai, saari connected FMS mein se — sabse zyada wala pehle. Ye sirf quick glance hai; on-time %, delay, aur har doer (sirf top wale nahi) dekhne ke liye click karo." />
+      </div>
+      <div className="card" style={{ marginBottom: 22 }}>
+        {topDoers.map((d) => (
+          <div key={d.email || d.doerName} className="stat-row" style={{ cursor: 'pointer' }}
+            onClick={() => navigate('liveRecords', { doer: d.doerName, status: 'OVERDUE' })}>
+            <span>{d.doerName} <span style={{ color: 'var(--text-soft)', fontSize: 12 }}>({d.fmsCount} FMS)</span></span>
+            <b>
+              <span className="stat-link" onClick={(e) => { e.stopPropagation(); navigate('liveRecords', { doer: d.doerName }); }}>{d.pending} pending</span>
+              {' · '}
+              <span className="stat-link" onClick={(e) => { e.stopPropagation(); navigate('liveRecords', { doer: d.doerName, status: 'OVERDUE' }); }}>{d.overdue} overdue</span>
+            </b>
+          </div>
+        ))}
+        {topDoers.length === 0 && <EmptyState icon="fa-users" title="No doer activity yet" />}
+        <div style={{ marginTop: 12, textAlign: 'right' }}>
+          <button className="btn btn-outline btn-sm" onClick={() => navigate('doerPerformance')}>View full Doer Performance report →</button>
+        </div>
       </div>
 
       <div className="section-title">

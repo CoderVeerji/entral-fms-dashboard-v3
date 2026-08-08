@@ -42,6 +42,7 @@ dashboardRoutes.get('/', requireAuth('dashboard.view'), async (c) => {
   const kpi = {
     totalActiveFms: configs.length, totalActiveRecords: 0, runningOnTime: 0, atRisk: 0,
     overdue: 0, stalled: 0, completedOnTime: 0, completedLate: 0, dataExceptions: 0, staleRecords: 0,
+    dueToday: 0, overdueBeforeToday: 0, upcoming: 0,
   };
 
   const fmsHealth = configs.map((config) => {
@@ -90,6 +91,29 @@ dashboardRoutes.get('/', requireAuth('dashboard.view'), async (c) => {
     else if (r.freshness === 'Critical') freshness.critical = n;
     else freshness.never += n; // 'Never' or null
   });
+
+  // Today's Workload — every record with a real plan time on its current stage, bucketed by
+  // calendar date against the server's own "today" (same date_trunc('day', now()) convention
+  // misReport.ts's DAILY/WEEKLY/MONTHLY boundaries and updateHealth.ts's todayOnly filter already
+  // use — not introducing IST-specific handling that no other feature in this app has). No status
+  // filter needed: only RUNNING_ON_TIME/AT_RISK/OVERDUE records ever have a non-null planTime
+  // (completed and NOT_STARTED records always have it null — see evaluateRecord_), so planTime IS
+  // NOT NULL alone already means "has a real, tracked deadline". Deliberately a coarser, date-only
+  // lens than the minute-precision recordStatus above it — a record due at 9am today and still
+  // open is "Due Today" here even though it's already OVERDUE by status.
+  const workloadConditions = [eq(records.isArchived, false), sql`${records.planTime} is not null`];
+  if (fmsIdFilter) workloadConditions.push(eq(records.fmsId, fmsIdFilter));
+  else if (configs.length) workloadConditions.push(inArray(records.fmsId, configs.map((c2) => c2.fmsId)));
+  const workloadRows = configs.length
+    ? await db.select({
+        dueToday: sql<number>`count(*) filter (where ${records.planTime} >= date_trunc('day', now()) and ${records.planTime} < date_trunc('day', now()) + interval '1 day')`,
+        overdueBeforeToday: sql<number>`count(*) filter (where ${records.planTime} < date_trunc('day', now()))`,
+        upcoming: sql<number>`count(*) filter (where ${records.planTime} >= date_trunc('day', now()) + interval '1 day')`,
+      }).from(records).where(and(...workloadConditions))
+    : [{ dueToday: 0, overdueBeforeToday: 0, upcoming: 0 }];
+  kpi.dueToday = Number(workloadRows[0]?.dueToday ?? 0);
+  kpi.overdueBeforeToday = Number(workloadRows[0]?.overdueBeforeToday ?? 0);
+  kpi.upcoming = Number(workloadRows[0]?.upcoming ?? 0);
 
   // Needs Attention — every connected FMS's own critical_sample (already sorted worst-delay-first
   // by packages/sync), merged and re-sorted, capped for the Dashboard's own display.
