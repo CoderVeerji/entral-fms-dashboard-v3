@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import * as schema from '@fms/db';
 import app from '../index';
 import { generateId, generateSalt, hashPassword } from '../crypto';
@@ -123,6 +123,15 @@ describeIfDb('update-health routes (integration)', () => {
   it('surfaces open action counts per record', async () => {
     const res = await app.request(`/api/update-health?fmsId=${fmsA}&freshness=Stale`, auth(), env);
     const body = await asJson(res);
+    // Diagnostic (temporary): this assertion has failed with 2 instead of 1 despite beforeAll
+    // clearing fmsA before inserting a single fixture row — dumping the actual matching rows into
+    // the failure message (visible in CI's annotation) shows whether it's a genuine second row
+    // (and if so, when it was created / what actionId it has) instead of guessing blind.
+    if (body.data.rows[0]?.openActions !== 1) {
+      const actual = await db.select().from(schema.actionItems)
+        .where(and(eq(schema.actionItems.fmsId, fmsA), eq(schema.actionItems.recordId, 'u3')));
+      throw new Error(`Expected 1 open action for ${fmsA}/u3, API reported ${body.data.rows[0]?.openActions}. DB rows: ${JSON.stringify(actual)}`);
+    }
     expect(body.data.rows[0].openActions).toBe(1);
   });
 });
