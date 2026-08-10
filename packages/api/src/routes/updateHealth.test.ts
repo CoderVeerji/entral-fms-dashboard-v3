@@ -33,6 +33,14 @@ describeIfDb('update-health routes (integration)', () => {
     pool = new Pool({ connectionString: DATABASE_URL });
     db = drizzle(pool, { schema });
 
+    // Defensive cleanup before inserting fresh fixtures: this suite runs against a real, shared
+    // Neon database (no fresh-per-run container), so a prior run that crashed or got cancelled
+    // before reaching afterAll can leave this fmsId's rows behind — actionItems has no natural key
+    // tying it to (fmsId, recordId), so a stray leftover row silently double-counts openActions on
+    // every run after that until cleaned up. Idempotent: a no-op on a clean database.
+    await db.delete(schema.actionItems).where(eq(schema.actionItems.fmsId, fmsA));
+    await db.delete(schema.records).where(eq(schema.records.fmsId, fmsA));
+
     await db.insert(schema.roles).values({
       roleId: testRoleId, roleName: 'Test Update Health Viewer',
       permissions: { 'records.view': true }, status: 'ACTIVE',
