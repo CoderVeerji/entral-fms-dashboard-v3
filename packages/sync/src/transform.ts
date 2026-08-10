@@ -139,3 +139,41 @@ export function findArchivedRecordIds(previouslyKnownIds: string[], currentlyPre
   const presentSet = new Set(currentlyPresentIds);
   return previouslyKnownIds.filter((id) => !presentSet.has(id));
 }
+
+// Every field a fresh Status_Cache read can actually change, i.e. everything upsertRecords writes
+// except recordId/fmsId (the lookup key) and synchronization bookkeeping (syncedAt). isArchived is
+// included deliberately: it lets a record that reappears after being archived be detected as
+// "changed" purely from this comparison (its stored isArchived=true vs the freshly-read false),
+// without any special-case archival-reversal logic.
+export type RecordSnapshot = Pick<NormalizedRecord,
+  | 'rawRow' | 'displayName' | 'currentStage' | 'doer' | 'doerEmail' | 'planTime' | 'recordStatus'
+  | 'delay' | 'completedSteps' | 'totalSteps' | 'lastUpdate' | 'freshness' | 'sequenceException'
+  | 'isClosed' | 'isArchived' | 'details'>;
+
+function snapshotsEqual(a: RecordSnapshot, b: RecordSnapshot): boolean {
+  return a.rawRow === b.rawRow && a.displayName === b.displayName && a.currentStage === b.currentStage
+    && a.doer === b.doer && a.doerEmail === b.doerEmail
+    && (a.planTime?.getTime() ?? null) === (b.planTime?.getTime() ?? null)
+    && a.recordStatus === b.recordStatus && a.completedSteps === b.completedSteps && a.totalSteps === b.totalSteps
+    && (a.lastUpdate?.getTime() ?? null) === (b.lastUpdate?.getTime() ?? null)
+    && a.freshness === b.freshness && a.sequenceException === b.sequenceException
+    && a.isClosed === b.isClosed && a.isArchived === b.isArchived
+    // delay/details are small JSON blobs (a handful of fields / free-text business columns) —
+    // stringify comparison is simple, correct, and cheap at this size; not worth a deep-equal dep.
+    && JSON.stringify(a.delay ?? null) === JSON.stringify(b.delay ?? null)
+    && JSON.stringify(a.details ?? {}) === JSON.stringify(b.details ?? {});
+}
+
+// The core of the "only touch what actually changed" sync (see plan §"Sync job" — this is what
+// makes a 5-minute cadence affordable on Neon's free egress allowance instead of rewriting every
+// record + re-deriving every stage_event on every single run regardless of whether anything in
+// this FMS moved). A record status/freshness/delay CAN legitimately change purely from time passing
+// (e.g. AT_RISK -> OVERDUE) even when lastUpdate does not — so this compares every written field,
+// not just lastUpdate, to stay correct for that case while still skipping the common case where
+// nothing changed at all.
+export function diffChangedRecords(existingByRecordId: Map<string, RecordSnapshot>, incoming: NormalizedRecord[]): NormalizedRecord[] {
+  return incoming.filter((rec) => {
+    const prev = existingByRecordId.get(rec.recordId);
+    return !prev || !snapshotsEqual(prev, rec);
+  });
+}

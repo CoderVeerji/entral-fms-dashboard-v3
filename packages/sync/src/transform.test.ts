@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { transformStatusCacheRow, findArchivedRecordIds, type StatusCacheRow } from './transform';
+import { transformStatusCacheRow, findArchivedRecordIds, diffChangedRecords, type StatusCacheRow, type RecordSnapshot } from './transform';
 
 function mkRow(overrides: Partial<StatusCacheRow> = {}): StatusCacheRow {
   return {
@@ -87,5 +87,48 @@ describe('findArchivedRecordIds', () => {
 
   it('returns empty for a brand-new FMS with no previously-known records', () => {
     expect(findArchivedRecordIds([], ['a', 'b'])).toEqual([]);
+  });
+});
+
+describe('diffChangedRecords', () => {
+  function snapshotOf(row: ReturnType<typeof transformStatusCacheRow>['record']): RecordSnapshot {
+    const { rawRow, displayName, currentStage, doer, doerEmail, planTime, recordStatus, delay,
+      completedSteps, totalSteps, lastUpdate, freshness, sequenceException, isClosed, isArchived, details } = row;
+    return { rawRow, displayName, currentStage, doer, doerEmail, planTime, recordStatus, delay,
+      completedSteps, totalSteps, lastUpdate, freshness, sequenceException, isClosed, isArchived, details };
+  }
+
+  it('treats a record not present in the existing snapshot map as changed (brand new)', () => {
+    const { record } = transformStatusCacheRow('fms_o2d', mkRow());
+    expect(diffChangedRecords(new Map(), [record])).toEqual([record]);
+  });
+
+  it('drops a record whose every written field is byte-identical to what is already stored', () => {
+    const { record } = transformStatusCacheRow('fms_o2d', mkRow());
+    const existing = new Map([[record.recordId, snapshotOf(record)]]);
+    expect(diffChangedRecords(existing, [record])).toEqual([]);
+  });
+
+  it('keeps a record whose status/delay changed purely from time passing, even with lastUpdate unchanged', () => {
+    const { record: before } = transformStatusCacheRow('fms_o2d', mkRow({ record_status: 'AT_RISK', delay_json: '' }));
+    const { record: after } = transformStatusCacheRow('fms_o2d', mkRow({ record_status: 'OVERDUE', delay_json: '{"minutes":45,"hours":0.8,"days":0,"human":"45m"}' }));
+    const existing = new Map([[before.recordId, snapshotOf(before)]]);
+    expect(diffChangedRecords(existing, [after])).toEqual([after]);
+  });
+
+  it('keeps a record that reappears after being archived, so it gets un-archived', () => {
+    const { record } = transformStatusCacheRow('fms_o2d', mkRow());
+    const existing = new Map([[record.recordId, { ...snapshotOf(record), isArchived: true }]]);
+    expect(diffChangedRecords(existing, [record])).toEqual([record]);
+  });
+
+  it('only returns the subset that actually changed out of a mixed batch', () => {
+    const { record: unchanged } = transformStatusCacheRow('fms_o2d', mkRow({ record_id: 'REC-U' }));
+    const { record: changed } = transformStatusCacheRow('fms_o2d', mkRow({ record_id: 'REC-C', completed_steps: 4 }));
+    const existing = new Map([
+      [unchanged.recordId, snapshotOf(unchanged)],
+      [changed.recordId, snapshotOf(transformStatusCacheRow('fms_o2d', mkRow({ record_id: 'REC-C', completed_steps: 3 })).record)],
+    ]);
+    expect(diffChangedRecords(existing, [unchanged, changed])).toEqual([changed]);
   });
 });

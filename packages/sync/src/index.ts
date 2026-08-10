@@ -2,8 +2,8 @@ import { eq, and } from 'drizzle-orm';
 import { fmsMaster, syncLog, dataHealthCache } from '@fms/db';
 import { createSyncDb, warmUpConnection } from './db';
 import { readStatusCacheSheet } from './sheets';
-import { transformStatusCacheRow, findArchivedRecordIds } from './transform';
-import { upsertRecords, replaceStageEventsForFms, markArchived, refreshFmsEvalCache, existingRecordIds } from './upsert';
+import { transformStatusCacheRow, findArchivedRecordIds, diffChangedRecords } from './transform';
+import { upsertRecords, replaceStageEventsForRecords, markArchived, refreshFmsEvalCache, existingRecordSnapshots } from './upsert';
 import { dedupeAndFindDuplicates, checkSuspiciousDates, checkNegativeDelay, type DataHealthIssue } from './dataHealth';
 
 // Entrypoint for the GitHub Actions scheduled workflow (see /.github/workflows/sync.yml) — see
@@ -50,22 +50,44 @@ async function main() {
           });
         }
 
-        const previouslyKnown = await existingRecordIds(db, fms.fmsId);
+        // Content-diffed sync (see transform.ts's diffChangedRecords comment): a 5-minute cadence
+        // that rewrote every record + every stage_event for every FMS on every run, regardless of
+        // whether anything actually moved, is what was burning through Neon's free egress
+        // allowance in under a week. Only records whose full content actually changed (or that are
+        // brand new) get written; an unchanged record's stage_events are provably unchanged too
+        // (they're derived from the same Status_Cache row), so they're never touched.
+        const existingSnapshots = await existingRecordSnapshots(db, fms.fmsId);
+        const previouslyKnown = Array.from(existingSnapshots.entries())
+          .filter(([, snap]) => !snap.isArchived)
+          .map(([recordId]) => recordId);
         const currentlyPresent = deduped.map((n) => n.record.recordId);
         const archivedIds = findArchivedRecordIds(previouslyKnown, currentlyPresent);
         await markArchived(db, fms.fmsId, archivedIds);
 
-        await upsertRecords(db, deduped.map((n) => n.record));
-        const allStageEvents = deduped.flatMap((n) => n.stageEvents);
-        await replaceStageEventsForFms(db, fms.fmsId, allStageEvents);
-        await refreshFmsEvalCache(db, fms.fmsId);
+        const changed = diffChangedRecords(existingSnapshots, deduped.map((n) => n.record));
+        const changedIds = new Set(changed.map((r) => r.recordId));
+        const changedEntries = deduped.filter((n) => changedIds.has(n.record.recordId));
+
+        if (changed.length) await upsertRecords(db, changed);
+        const touchedRecordIds = [...changedIds, ...archivedIds];
+        const touchedStageEvents = changedEntries.flatMap((n) => n.stageEvents);
+        await replaceStageEventsForRecords(db, fms.fmsId, touchedRecordIds, touchedStageEvents);
+        // Nothing changed and nothing archived => the FMS-wide aggregate already sitting in
+        // fms_eval_cache from last run is still correct — recomputing it would re-read every
+        // record/stage_event for this FMS for an identical result, the other big source of the
+        // same wasted egress. Exception: completedToday buckets by calendar date, which moves at
+        // midnight even when zero records change — force one refresh the first run after the day
+        // rolls over so that count can't get stuck showing yesterday's total on a quiet FMS.
+        const dayRolledOver = !fms.lastSuccessfulSync
+          || fms.lastSuccessfulSync.toISOString().slice(0, 10) !== new Date().toISOString().slice(0, 10);
+        if (changed.length || archivedIds.length || dayRolledOver) await refreshFmsEvalCache(db, fms.fmsId);
 
         await db.insert(syncLog).values({
           fmsId: fms.fmsId, startedAt, completedAt: new Date(), status: 'SUCCESS',
           rowsRead: rawRows.length, durationMs: Date.now() - startedAt.getTime(), triggeredBy: 'sync-job',
         });
         await db.update(fmsMaster).set({ lastSuccessfulSync: new Date(), lastSyncStatus: 'SUCCESS' }).where(eq(fmsMaster.fmsId, fms.fmsId));
-        console.log(`Synced ${fms.fmsName}: ${rawRows.length} rows, ${archivedIds.length} newly archived, ${duplicateIds.length} duplicates.`);
+        console.log(`Synced ${fms.fmsName}: ${rawRows.length} rows read, ${changed.length} changed, ${archivedIds.length} newly archived, ${duplicateIds.length} duplicates.`);
         syncedFms.push({ fmsId: fms.fmsId, fmsName: fms.fmsName });
       } catch (err) {
         // One FMS failing must never abort the run for the others — same principle as

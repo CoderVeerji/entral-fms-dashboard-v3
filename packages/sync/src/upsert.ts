@@ -1,7 +1,7 @@
 import { eq, and, inArray, notInArray, sql } from 'drizzle-orm';
 import { records, stageEvents, fmsEvalCache } from '@fms/db';
 import { computeAggregates, finalizeBucket, computeTimelinessScore, computePendingHealthScore, computeDataQualityScore, computeFreshnessScore, computeOverallFmsScore } from '@fms/core';
-import type { NormalizedRecord, NormalizedStageEvent } from './transform';
+import type { NormalizedRecord, NormalizedStageEvent, RecordSnapshot } from './transform';
 import type { createSyncDb } from './db';
 
 type Db = ReturnType<typeof createSyncDb>['db'];
@@ -30,16 +30,21 @@ export async function upsertRecords(db: Db, rows: NormalizedRecord[]): Promise<v
   }
 }
 
-// Replaces every stage_events row for this FMS in exactly 2 round trips (one delete, one batched
-// insert) instead of one delete+insert PER RECORD — the original per-record version here caused
-// a real observed hang syncing 3,500+ records (thousands of sequential Neon round trips, each
-// paying real network latency, easily adding up to minutes). Since readStatusCacheSheet already
-// reads the FMS's entire Status_Cache every run (see index.ts's comment on why no separate
-// updated_at diff is needed there), a full replace is correct and simple, not just faster.
-export async function replaceStageEventsForFms(db: Db, fmsId: string, allEvents: NormalizedStageEvent[]): Promise<void> {
-  await db.delete(stageEvents).where(eq(stageEvents.fmsId, fmsId));
-  for (let i = 0; i < allEvents.length; i += BATCH_SIZE) {
-    const batch = allEvents.slice(i, i + BATCH_SIZE);
+// Replaces stage_events only for the given record_ids (the ones diffChangedRecords found actually
+// changed this run, plus any just-archived) — NOT a full-FMS wipe. A record's stage_results_json
+// lives inside the same Status_Cache row compared by diffChangedRecords, so "record content
+// unchanged" already guarantees its derived stage_events are unchanged too; touching only the
+// changed subset is what makes a 5-minute sync cadence affordable on Neon's free egress allowance
+// (see plan §"Sync job" / transform.ts's diffChangedRecords comment) instead of rewriting every
+// stage_event for every record on every run regardless of whether anything moved.
+export async function replaceStageEventsForRecords(db: Db, fmsId: string, recordIds: string[], events: NormalizedStageEvent[]): Promise<void> {
+  if (!recordIds.length) return;
+  for (let i = 0; i < recordIds.length; i += BATCH_SIZE) {
+    const idBatch = recordIds.slice(i, i + BATCH_SIZE);
+    await db.delete(stageEvents).where(and(eq(stageEvents.fmsId, fmsId), inArray(stageEvents.recordId, idBatch)));
+  }
+  for (let i = 0; i < events.length; i += BATCH_SIZE) {
+    const batch = events.slice(i, i + BATCH_SIZE);
     if (batch.length) await db.insert(stageEvents).values(batch);
   }
 }
@@ -114,10 +119,29 @@ export async function refreshFmsEvalCache(db: Db, fmsId: string): Promise<void> 
   });
 }
 
-export async function existingRecordIds(db: Db, fmsId: string): Promise<string[]> {
-  const rows = await db.select({ recordId: records.recordId }).from(records)
-    .where(and(eq(records.fmsId, fmsId), eq(records.isArchived, false)));
-  return rows.map((r) => r.recordId);
+// One read serving two purposes: the full snapshot (every field diffChangedRecords compares) for
+// content-diffing, and (by filtering out already-archived rows) the "previously known" id list
+// findArchivedRecordIds needs — a record already marked archived doesn't need to be re-detected as
+// missing every run, same as the narrower query this replaced.
+export async function existingRecordSnapshots(db: Db, fmsId: string): Promise<Map<string, RecordSnapshot>> {
+  const rows = await db.select({
+    recordId: records.recordId, rawRow: records.rawRow, displayName: records.displayName,
+    currentStage: records.currentStage, doer: records.doer, doerEmail: records.doerEmail,
+    planTime: records.planTime, recordStatus: records.recordStatus, delay: records.delay,
+    completedSteps: records.completedSteps, totalSteps: records.totalSteps, lastUpdate: records.lastUpdate,
+    freshness: records.freshness, sequenceException: records.sequenceException, isClosed: records.isClosed,
+    isArchived: records.isArchived, details: records.details,
+  }).from(records).where(eq(records.fmsId, fmsId));
+  // Coalesce nullable columns to the same non-null defaults transformStatusCacheRow already
+  // applies to a fresh read, so an old stored NULL never looks "changed" against a freshly-read ''.
+  return new Map(rows.map((r) => [r.recordId, {
+    rawRow: r.rawRow, displayName: r.displayName ?? '', currentStage: r.currentStage ?? '',
+    doer: r.doer ?? '', doerEmail: r.doerEmail ?? '', planTime: r.planTime, recordStatus: r.recordStatus,
+    delay: r.delay, completedSteps: r.completedSteps ?? 0, totalSteps: r.totalSteps ?? 0,
+    lastUpdate: r.lastUpdate, freshness: r.freshness ?? 'Never', sequenceException: r.sequenceException ?? false,
+    isClosed: r.isClosed ?? false, isArchived: r.isArchived ?? false,
+    details: (r.details as Record<string, unknown> | null) ?? null,
+  } satisfies RecordSnapshot]));
 }
 
 export { notInArray };
