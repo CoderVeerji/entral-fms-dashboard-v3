@@ -19,5 +19,12 @@ enabled = true
 #                  trigger (observed running 1-3 hours late instead of every 5 min — see plan
 #                  §"M7" follow-up). The actual sync logic stays in GitHub Actions; this is only
 #                  the dispatch call.
+#
+# TEMPORARILY DISABLED (2026-08-10): Neon's 5GB/month free network transfer allowance hit 100%
+# and compute is at risk of suspension. This */5 cron dispatches the sync workflow independently
+# of GitHub's own (now-commented-out) `schedule:` trigger in sync.yml — pausing sync.yml alone
+# was NOT enough, this was still firing it. Both crons are paused (even the small */4 keep-warm
+# ping) to stop ALL further Neon traffic until headroom is confirmed. Restore both entries once
+# safe.
 [triggers]
-crons = ["*/4 * * * *", "*/5 * * * *"]
+crons = []
