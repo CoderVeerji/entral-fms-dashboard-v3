@@ -6,9 +6,14 @@ name: Sync FMS data
 # overhead is counted). No proprietary data lives in this repo — only generic, FMS-agnostic sync
 # code; FMS spreadsheet IDs/credentials are secrets, never committed.
 on:
-  schedule:
-    - cron: '*/5 * * * *'
-  workflow_dispatch: {} # manual "Sync Now" equivalent to the old app's button
+  # TEMPORARILY PAUSED (2026-08-10): Neon's 5GB/month free network transfer allowance hit 100% —
+  # every further query/write against Neon risks compute suspension for the rest of the billing
+  # cycle. The content-diffing fix (see packages/sync/src/index.ts) cuts future usage drastically,
+  # but doesn't undo what's already been consumed this cycle. Re-enable the schedule below once
+  # Neon confirms the allowance has reset or headroom is otherwise confirmed safe.
+  # schedule:
+  #   - cron: '*/5 * * * *'
+  workflow_dispatch: {} # manual "Sync Now" equivalent to the old app's button — still available
 
 jobs:
   sync:
