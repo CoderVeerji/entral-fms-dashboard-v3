@@ -123,16 +123,11 @@ describeIfDb('update-health routes (integration)', () => {
   it('surfaces open action counts per record', async () => {
     const res = await app.request(`/api/update-health?fmsId=${fmsA}&freshness=Stale`, auth(), env);
     const body = await asJson(res);
-    // Diagnostic (temporary): this assertion has failed with 2 instead of 1 despite beforeAll
-    // clearing fmsA before inserting a single fixture row — dumping the actual matching rows into
-    // the failure message (visible in CI's annotation) shows whether it's a genuine second row
-    // (and if so, when it was created / what actionId it has) instead of guessing blind.
-    if (body.data.rows[0]?.openActions !== 1) {
-      const actionRows = await db.select().from(schema.actionItems).where(eq(schema.actionItems.fmsId, fmsA));
-      const recordRows = await db.select().from(schema.records).where(eq(schema.records.fmsId, fmsA));
-      throw new Error(`Unexpected openActions. Full API rows: ${JSON.stringify(body.data.rows)}. `
-        + `All actionItems for ${fmsA}: ${JSON.stringify(actionRows)}. All records for ${fmsA}: ${JSON.stringify(recordRows)}.`);
-    }
+    // Regression coverage for a real bug: openActions used to be a correlated scalar subquery
+    // sitting in the same SELECT as the count(*) over() window function used for pagination's
+    // totalCount — that combination made Postgres over-count openActions (reported 2 when exactly
+    // one action_items row existed). Now a LEFT JOIN against a GROUP BY aggregate (see
+    // updateHealth.ts).
     expect(body.data.rows[0].openActions).toBe(1);
   });
 });

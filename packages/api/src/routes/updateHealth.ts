@@ -54,17 +54,34 @@ updateHealthRoutes.get('/', requireAuth('records.view'), async (c) => {
   if (!length || length < 0) length = 50;
   length = Math.min(length, HARD_CAP);
 
+  // Open-action counts per (fmsId, recordId), pre-aggregated as its own subquery and LEFT JOINed
+  // in — NOT a correlated scalar subquery in the same SELECT as the count(*) over() window
+  // function below. That combination was observed (via updateHealth.test.ts) to make Postgres
+  // mis-evaluate the correlated subquery, over-counting openActions for a record even when only
+  // one matching action_items row genuinely existed. A LEFT JOIN against a GROUP BY aggregate is
+  // the standard way to compute a per-row count alongside a window function and doesn't hit
+  // whatever query-plan interaction caused that.
+  const openActionsAgg = db.select({
+    fmsId: actionItems.fmsId, recordId: actionItems.recordId,
+    // count(*) is Postgres bigint, which the driver returns as a string — cast to int here so the
+    // JSON response actually carries a number, not "1" (see updateHealth.test.ts's regression).
+    count: sql<number>`count(*)::int`.as('open_actions_count'),
+  }).from(actionItems)
+    .where(and(eq(actionItems.isDeleted, false), sql`${actionItems.status} not in ('Resolved', 'Cancelled')`))
+    .groupBy(actionItems.fmsId, actionItems.recordId)
+    .as('open_actions_agg');
+
   // Oldest/never-updated first (nulls first, then ascending lastUpdate) — same "most urgent
   // first" order as Code.gs's descending-hoursSinceUpdate sort (with null treated as infinite).
   const rowsWithTotal = await db.select({
     fmsId: records.fmsId, recordId: records.recordId, displayName: records.displayName,
     currentStage: records.currentStage, doer: records.doer, planTime: records.planTime,
     delay: records.delay, lastUpdate: records.lastUpdate, freshness: records.freshness,
-    // count(*) is Postgres bigint, which the driver returns as a string — cast to int here so the
-    // JSON response actually carries a number, not "1" (see updateHealth.test.ts's regression).
-    openActions: sql<number>`(select count(*)::int from ${actionItems} where ${actionItems.fmsId} = ${records.fmsId} and ${actionItems.recordId} = ${records.recordId} and ${actionItems.isDeleted} = false and ${actionItems.status} not in ('Resolved', 'Cancelled'))`,
+    openActions: sql<number>`coalesce(${openActionsAgg.count}, 0)`,
     totalCount: sql<number>`count(*) over()`,
-  }).from(records).where(where)
+  }).from(records)
+    .leftJoin(openActionsAgg, and(eq(openActionsAgg.fmsId, records.fmsId), eq(openActionsAgg.recordId, records.recordId)))
+    .where(where)
     .orderBy(sql`${records.lastUpdate} asc nulls first`)
     .limit(length).offset(start);
 
