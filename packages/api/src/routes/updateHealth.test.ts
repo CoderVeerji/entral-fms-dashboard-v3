@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import * as schema from '@fms/db';
 import app from '../index';
 import { generateId, generateSalt, hashPassword } from '../crypto';
@@ -128,9 +128,10 @@ describeIfDb('update-health routes (integration)', () => {
     // the failure message (visible in CI's annotation) shows whether it's a genuine second row
     // (and if so, when it was created / what actionId it has) instead of guessing blind.
     if (body.data.rows[0]?.openActions !== 1) {
-      const actual = await db.select().from(schema.actionItems)
-        .where(and(eq(schema.actionItems.fmsId, fmsA), eq(schema.actionItems.recordId, 'u3')));
-      throw new Error(`Expected 1 open action for ${fmsA}/u3, API reported ${body.data.rows[0]?.openActions}. DB rows: ${JSON.stringify(actual)}`);
+      const actionRows = await db.select().from(schema.actionItems).where(eq(schema.actionItems.fmsId, fmsA));
+      const recordRows = await db.select().from(schema.records).where(eq(schema.records.fmsId, fmsA));
+      throw new Error(`Unexpected openActions. Full API rows: ${JSON.stringify(body.data.rows)}. `
+        + `All actionItems for ${fmsA}: ${JSON.stringify(actionRows)}. All records for ${fmsA}: ${JSON.stringify(recordRows)}.`);
     }
     expect(body.data.rows[0].openActions).toBe(1);
   });
