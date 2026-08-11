@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { appSettings } from '@fms/db';
 import { createDb } from './db';
 import { AppError, fail } from '@fms/core';
 import { statusForCode } from './errors';
@@ -65,20 +64,26 @@ app.route('/api/sync', syncRoutes);
 app.route('/api/data-health', dataHealthRoutes);
 app.route('/api/ai', aiRoutes);
 
-// Two Cron Triggers (wrangler.toml), distinguished by event.cron since Workers only exposes one
-// scheduled() handler for however many cron entries a Worker has.
-const SYNC_DISPATCH_CRON = '*/5 * * * *';
-
-// GitHub's own `schedule:` trigger for packages/sync's workflow is best-effort — GitHub's docs
-// say scheduled workflow runs "can be delayed during periods of high loads" and real observed
-// runs during this project were sometimes 1-3 hours apart instead of every 5 minutes. This trigger
-// exists ONLY to fire the same workflow_dispatch call the "Sync Now" button already makes
-// (routes/sync.ts), on Cloudflare's own reliable schedule instead — the actual sync logic never
-// moves into a Worker (would need real Node + a pooled Postgres connection, and would blow the
-// Workers free plan's 10ms-per-Cron-Trigger CPU budget processing thousands of records; a single
-// outbound fetch() here is almost all I/O wait, comfortably under that budget).
+// One Cron Trigger (wrangler.toml), scoped to office hours (Mon-Sat, ~9AM-7PM IST) — every
+// further Neon query (even a trivial keep-warm ping) costs real money now that the project is on
+// a paid plan, and there's no point paying to keep compute warm or data auto-refreshing at 2am
+// when nobody is looking at the dashboard. A real request outside this window still works exactly
+// as before, just pays a one-time cold-start delay (hundreds of ms) instead of hitting an
+// already-warm compute — a fine trade for not running 24/7 for no one.
+//
+// GitHub's own `schedule:` trigger for packages/sync's workflow (also scoped to the same window,
+// see sync.yml) is best-effort — GitHub's docs say scheduled workflow runs "can be delayed during
+// periods of high loads" and real observed runs during this project were sometimes 1-3 hours apart
+// instead of every 5 minutes. This trigger exists ONLY to fire the same workflow_dispatch call the
+// "Sync Now" button already makes (routes/sync.ts), on Cloudflare's own reliable schedule instead
+// — the actual sync logic never moves into a Worker (would need real Node + a pooled Postgres
+// connection, and would blow the Workers free plan's 10ms-per-Cron-Trigger CPU budget processing
+// thousands of records; a single outbound fetch() here is almost all I/O wait, comfortably under
+// that budget). A dedicated keep-warm ping is no longer needed separately — this dispatch itself
+// (and the sync run it triggers) keeps compute warm through the whole office-hours window as a
+// side effect.
 async function dispatchScheduledSync(env: Env) {
-  if (!env.GITHUB_TOKEN) return; // not configured — the */4 keep-warm ping still runs regardless
+  if (!env.GITHUB_TOKEN) return;
   try {
     const result = await dispatchGithubSync(env.GITHUB_TOKEN);
     if (!result.ok) console.error(`[sync-dispatch] GitHub declined (HTTP ${result.status}): ${result.body}`);
@@ -87,22 +92,10 @@ async function dispatchScheduledSync(env: Env) {
   }
 }
 
-// Keeps Neon's free-tier compute from suspending so it isn't the *user's* request that pays the
-// cold-start wake-up cost. A failed ping just means the next real request wakes it instead —
-// never fatal.
-async function keepNeonWarm(env: Env) {
-  try {
-    await createDb(env.DATABASE_URL).select().from(appSettings).limit(1);
-  } catch (err) {
-    console.error('[keep-warm] ping failed:', err);
-  }
-}
-
 // Attached to `app` itself (rather than wrapping the default export in a plain { fetch, scheduled }
 // object) so `app.request(...)` keeps working for tests, which import this same default export.
-async function scheduled(event: ScheduledEvent, env: Env) {
-  if (event.cron === SYNC_DISPATCH_CRON) await dispatchScheduledSync(env);
-  else await keepNeonWarm(env);
+async function scheduled(_event: ScheduledEvent, env: Env) {
+  await dispatchScheduledSync(env);
 }
 
 export default Object.assign(app, { scheduled });

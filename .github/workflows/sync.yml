@@ -1,19 +1,21 @@
 name: Sync FMS data
 
-# Runs every 5 minutes, matching the old app's warmFmsCache cadence — see plan §"Known risks":
-# this workflow's repo needs to be PUBLIC for unlimited free Actions minutes at this cadence
-# (288 runs/day comfortably exceeds the ~2,000 min/mo private-repo free allowance once per-run VM
-# overhead is counted). No proprietary data lives in this repo — only generic, FMS-agnostic sync
-# code; FMS spreadsheet IDs/credentials are secrets, never committed.
+# Runs every 5 minutes, but ONLY during office hours (Mon-Sat, ~9AM-7PM IST = 3:00-13:59 UTC —
+# cron's hour field can't express the exact :30 IST boundary, so this runs ~30min either side of
+# 9-7, which is harmless). Neon is now on a paid usage-based plan (2026-08-10, after the free
+# tier's 5GB/month network transfer allowance was exhausted in under a week running 24/7), so every
+# run costs real money — there's no value auto-refreshing data at 2am when nobody's looking at the
+# dashboard. This is a reliability backstop; the primary trigger is the Worker's own cron
+# (wrangler.toml, same window) calling workflow_dispatch, since GitHub's own `schedule:` is
+# best-effort and was observed running 1-3 hours late during this project.
+#
+# This workflow's repo needs to be PUBLIC for unlimited free Actions minutes at this cadence. No
+# proprietary data lives in this repo — only generic, FMS-agnostic sync code; FMS spreadsheet
+# IDs/credentials are secrets, never committed.
 on:
-  # TEMPORARILY PAUSED (2026-08-10): Neon's 5GB/month free network transfer allowance hit 100% —
-  # every further query/write against Neon risks compute suspension for the rest of the billing
-  # cycle. The content-diffing fix (see packages/sync/src/index.ts) cuts future usage drastically,
-  # but doesn't undo what's already been consumed this cycle. Re-enable the schedule below once
-  # Neon confirms the allowance has reset or headroom is otherwise confirmed safe.
-  # schedule:
-  #   - cron: '*/5 * * * *'
-  workflow_dispatch: {} # manual "Sync Now" equivalent to the old app's button — still available
+  schedule:
+    - cron: '*/5 3-13 * * 1-6'
+  workflow_dispatch: {} # manual "Sync Now" equivalent to the old app's button
 
 jobs:
   sync:
